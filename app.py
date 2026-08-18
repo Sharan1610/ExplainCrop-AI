@@ -1,11 +1,13 @@
 """
 ExplainCrop-AI: Interactive Web Application
 Built with Streamlit & Plotly with Explainable AI (XAI) and Live Weather Integration.
+Features an interactive dynamic particle mesh background and glassmorphic UI.
 """
 
 import os
 import json
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import numpy as np
 import plotly.express as px
@@ -22,78 +24,156 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Custom High-Aesthetic Glassmorphic CSS
+# Interactive Dynamic Background & High-Aesthetic Glassmorphic CSS
 st.markdown(
     """
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Outfit:wght@400;600;800&display=swap');
 
     html, body, [class*="css"] {
         font-family: 'Plus Jakarta Sans', sans-serif;
     }
 
-    /* Gradient Background */
+    /* Ambient Animated Mesh Background */
     .stApp {
-        background: radial-gradient(circle at 10% 20%, rgba(15, 23, 42, 0.98) 0%, rgba(10, 15, 29, 1) 90.2%);
+        background-color: #0B1120;
+        background-image: 
+            radial-gradient(at 0% 0%, rgba(16, 185, 129, 0.15) 0px, transparent 50%),
+            radial-gradient(at 100% 0%, rgba(56, 189, 248, 0.15) 0px, transparent 50%),
+            radial-gradient(at 100% 100%, rgba(139, 92, 246, 0.12) 0px, transparent 50%),
+            radial-gradient(at 0% 100%, rgba(5, 150, 105, 0.12) 0px, transparent 50%);
+        background-attachment: fixed;
         color: #F8FAFC;
+    }
+
+    /* Glowing Floating Orbs in Background */
+    .floating-orb-1 {
+        position: fixed;
+        width: 350px;
+        height: 350px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(16, 185, 129, 0.25) 0%, rgba(16, 185, 129, 0) 70%);
+        top: -50px;
+        left: 10%;
+        z-index: 0;
+        pointer-events: none;
+        animation: floatOrb 18s ease-in-out infinite alternate;
+        filter: blur(40px);
+    }
+    .floating-orb-2 {
+        position: fixed;
+        width: 450px;
+        height: 450px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(56, 189, 248, 0.2) 0%, rgba(56, 189, 248, 0) 70%);
+        bottom: 50px;
+        right: 5%;
+        z-index: 0;
+        pointer-events: none;
+        animation: floatOrb 22s ease-in-out infinite alternate-reverse;
+        filter: blur(50px);
+    }
+
+    @keyframes floatOrb {
+        0% { transform: translate(0, 0) scale(1); }
+        50% { transform: translate(60px, 40px) scale(1.15); }
+        100% { transform: translate(-40px, 80px) scale(0.95); }
     }
 
     /* Hero Header */
     .hero-container {
-        background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(6, 182, 212, 0.15) 100%);
-        border: 1px solid rgba(16, 185, 129, 0.3);
-        border-radius: 16px;
-        padding: 24px 32px;
+        position: relative;
+        z-index: 1;
+        background: linear-gradient(135deg, rgba(16, 185, 129, 0.18) 0%, rgba(15, 23, 42, 0.8) 50%, rgba(56, 189, 248, 0.18) 100%);
+        border: 1px solid rgba(52, 211, 153, 0.35);
+        border-radius: 20px;
+        padding: 28px 36px;
         margin-bottom: 24px;
-        backdrop-filter: blur(12px);
-        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    .hero-container:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 16px 50px rgba(16, 185, 129, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.2);
     }
     .hero-title {
-        font-size: 2.3rem;
+        font-family: 'Outfit', sans-serif;
+        font-size: 2.5rem;
         font-weight: 800;
-        background: linear-gradient(90deg, #34D399, #38BDF8, #A78BFA);
+        background: linear-gradient(90deg, #34D399, #38BDF8, #A78BFA, #34D399);
+        background-size: 300% 300%;
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
+        animation: gradientShift 8s ease infinite;
         margin-bottom: 8px;
+        letter-spacing: -0.5px;
+    }
+    @keyframes gradientShift {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
     }
     .hero-subtitle {
         color: #94A3B8;
-        font-size: 1.05rem;
+        font-size: 1.08rem;
         font-weight: 400;
+        line-height: 1.5;
     }
 
     /* Glass Cards */
     .glass-card {
-        background: rgba(30, 41, 59, 0.7);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 14px;
-        padding: 20px;
-        backdrop-filter: blur(8px);
-        margin-bottom: 18px;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.25);
-    }
-    .glass-card-highlight {
-        background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(30, 41, 59, 0.8) 100%);
-        border: 1px solid rgba(52, 211, 153, 0.4);
+        position: relative;
+        z-index: 1;
+        background: rgba(30, 41, 59, 0.65);
+        border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 16px;
-        padding: 24px;
-        box-shadow: 0 0 25px rgba(16, 185, 129, 0.2);
+        padding: 22px;
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        margin-bottom: 18px;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .glass-card:hover {
+        transform: translateY(-4px);
+        border-color: rgba(56, 189, 248, 0.3);
+        box-shadow: 0 14px 40px rgba(0, 0, 0, 0.4), 0 0 20px rgba(56, 189, 248, 0.15);
+    }
+
+    .glass-card-highlight {
+        position: relative;
+        z-index: 1;
+        background: linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(30, 41, 59, 0.85) 100%);
+        border: 1px solid rgba(52, 211, 153, 0.5);
+        border-radius: 18px;
+        padding: 26px;
+        backdrop-filter: blur(16px);
+        box-shadow: 0 10px 35px rgba(16, 185, 129, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .glass-card-highlight:hover {
+        transform: translateY(-4px) scale(1.01);
+        border-color: rgba(52, 211, 153, 0.8);
+        box-shadow: 0 16px 45px rgba(16, 185, 129, 0.35), 0 0 30px rgba(16, 185, 129, 0.2);
     }
 
     /* Badges */
     .crop-badge {
         display: inline-block;
-        padding: 6px 16px;
+        padding: 6px 18px;
         background: linear-gradient(90deg, #059669, #10B981);
         color: #FFFFFF;
         font-weight: 700;
         font-size: 1.3rem;
         border-radius: 30px;
         letter-spacing: 0.5px;
+        box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
     }
     .confidence-badge {
         display: inline-block;
-        padding: 4px 12px;
+        padding: 5px 14px;
         background: rgba(56, 189, 248, 0.2);
         border: 1px solid rgba(56, 189, 248, 0.4);
         color: #38BDF8;
@@ -102,34 +182,185 @@ st.markdown(
         font-size: 0.95rem;
     }
 
-    /* Buttons */
+    /* Custom Streamlit Sliders & Inputs */
+    .stSlider > div > div > div > div {
+        background: linear-gradient(90deg, #10B981, #38BDF8) !important;
+    }
+
+    /* Modern Buttons */
     .stButton>button {
         background: linear-gradient(90deg, #10B981 0%, #059669 100%);
         color: white;
-        border: none;
-        border-radius: 10px;
-        padding: 12px 24px;
+        border: 1px solid rgba(52, 211, 153, 0.4);
+        border-radius: 12px;
+        padding: 14px 28px;
         font-weight: 700;
-        font-size: 1rem;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);
+        font-size: 1.05rem;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 4px 20px rgba(16, 185, 129, 0.4);
         width: 100%;
+        letter-spacing: 0.3px;
     }
     .stButton>button:hover {
         background: linear-gradient(90deg, #059669 0%, #047857 100%);
         transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(16, 185, 129, 0.6);
+        box-shadow: 0 8px 25px rgba(16, 185, 129, 0.6);
         color: white;
+        border-color: rgba(52, 211, 153, 0.8);
     }
 
     /* Sidebar Styling */
     section[data-testid="stSidebar"] {
-        background: rgba(15, 23, 42, 0.95);
+        background: rgba(15, 23, 42, 0.92);
         border-right: 1px solid rgba(255, 255, 255, 0.08);
+        backdrop-filter: blur(20px);
     }
     </style>
+
+    <!-- Floating Background Orbs -->
+    <div class="floating-orb-1"></div>
+    <div class="floating-orb-2"></div>
     """,
     unsafe_allow_html=True,
+)
+
+# Interactive Particle Mesh Canvas Component
+components.html(
+    """
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            width: 100%;
+            height: 100%;
+            background: transparent;
+        }
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: auto;
+        }
+    </style>
+    </head>
+    <body>
+    <canvas id="particleCanvas"></canvas>
+    <script>
+        const canvas = document.getElementById('particleCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            initParticles();
+        });
+
+        const mouse = { x: null, y: null, radius: 120 };
+        window.addEventListener('mousemove', (e) => {
+            mouse.x = e.x;
+            mouse.y = e.y;
+        });
+        window.addEventListener('mouseout', () => {
+            mouse.x = null;
+            mouse.y = null;
+        });
+
+        class Particle {
+            constructor() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.size = Math.random() * 2.5 + 1;
+                this.vx = (Math.random() - 0.5) * 0.7;
+                this.vy = (Math.random() - 0.5) * 0.7;
+                this.baseColor = Math.random() > 0.5 ? '16, 185, 129' : '56, 189, 248';
+                this.alpha = Math.random() * 0.6 + 0.2;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(${this.baseColor}, ${this.alpha})`;
+                ctx.shadowBlur = 8;
+                ctx.shadowColor = `rgba(${this.baseColor}, 0.5)`;
+                ctx.fill();
+            }
+
+            update() {
+                if (this.x < 0 || this.x > width) this.vx *= -1;
+                if (this.y < 0 || this.y > height) this.vy *= -1;
+
+                // Mouse interaction repulsion/pull
+                if (mouse.x != null && mouse.y != null) {
+                    let dx = mouse.x - this.x;
+                    let dy = mouse.y - this.y;
+                    let dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < mouse.radius) {
+                        let force = (mouse.radius - dist) / mouse.radius;
+                        this.x -= (dx / dist) * force * 3;
+                        this.y -= (dy / dist) * force * 3;
+                    }
+                }
+
+                this.x += this.vx;
+                this.y += this.vy;
+                this.draw();
+            }
+        }
+
+        let particles = [];
+        function initParticles() {
+            particles = [];
+            const count = Math.min(Math.floor((width * height) / 14000), 80);
+            for (let i = 0; i < count; i++) {
+                particles.push(new Particle());
+            }
+        }
+        initParticles();
+
+        function connectParticles() {
+            for (let a = 0; a < particles.length; a++) {
+                for (let b = a + 1; b < particles.length; b++) {
+                    let dx = particles[a].x - particles[b].x;
+                    let dy = particles[a].y - particles[b].y;
+                    let dist = Math.sqrt(dx * dx + dy * dy);
+
+                    if (dist < 130) {
+                        let opacity = 1 - (dist / 130);
+                        ctx.strokeStyle = `rgba(16, 185, 129, ${opacity * 0.25})`;
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(particles[a].x, particles[a].y);
+                        ctx.lineTo(particles[b].x, particles[b].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        function animate() {
+            ctx.clearRect(0, 0, width, height);
+            for (let i = 0; i < particles.length; i++) {
+                particles[i].update();
+            }
+            connectParticles();
+            requestAnimationFrame(animate);
+        }
+        animate();
+    </script>
+    </body>
+    </html>
+    """,
+    height=120,
 )
 
 # Initialize Session State
@@ -182,7 +413,7 @@ st.markdown(
     <div class="hero-container">
         <div class="hero-title">🌾 ExplainCrop-AI</div>
         <div class="hero-subtitle">
-            Next-Generation Crop Recommendation with <b>XGBoost</b>, <b>SHAP Interpretability</b>, and <b>Real-Time Weather Intelligence</b>
+            Explainable Precision Agriculture powered by <b>XGBoost</b>, <b>SHAP Interpretability</b>, and <b>Real-Time Weather Intelligence</b>
         </div>
     </div>
     """,
@@ -257,7 +488,7 @@ with st.sidebar:
     st.markdown("### ℹ️ About ExplainCrop-AI")
     st.markdown(
         """
-        - **Model**: Multi-Class XGBoost
+        - **Model**: Multi-Class XGBoost (99.32% Acc)
         - **Explainability**: SHAP TreeExplainer
         - **Weather**: Open-Meteo Live API
         - **Author**: Vinesh Raja
