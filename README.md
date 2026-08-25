@@ -1,108 +1,139 @@
-# 🌾 ExplainCrop-AI
+# 🌾 CropMind AI: Climate-Resilient Crop Recommendation System
 
-[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
-[![XGBoost](https://img.shields.io/badge/Model-XGBoost-EB6440?style=for-the-badge&logo=xgboost&logoColor=white)](https://xgboost.readthedocs.io/)
-[![SHAP](https://img.shields.io/badge/Explainability-SHAP-4F46E5?style=for-the-badge)](https://shap.readthedocs.io/)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![XGBoost 2.0+](https://img.shields.io/badge/Model-XGBoost%20Hist-EB6440?style=for-the-badge&logo=xgboost&logoColor=white)](https://xgboost.readthedocs.io/)
+[![TreeSHAP](https://img.shields.io/badge/Explainability-TreeSHAP%20XAI-4F46E5?style=for-the-badge)](https://shap.readthedocs.io/)
+[![FastAPI](https://img.shields.io/badge/API-FastAPI%20REST-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![SQLite](https://img.shields.io/badge/Database-SQLite%20%2B%20Parquet-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://www.sqlite.org/)
 [![Streamlit](https://img.shields.io/badge/Frontend-Streamlit-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://streamlit.io/)
-[![Open-Meteo](https://img.shields.io/badge/Weather-Open--Meteo%20API-0284C7?style=for-the-badge)](https://open-meteo.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
-> **ExplainCrop-AI** is an Explainable AI (XAI) Precision Agriculture platform that recommends the most suitable crops for agricultural soil and environmental conditions. It combines high-accuracy **XGBoost multi-class classification**, **SHAP (SHapley Additive exPlanations)** factor attribution, and **live real-time weather integration** with actionable agronomic advisories.
+> **CropMind AI (PRD & TRD v1.0.0)** is an Explainable Multi-Modal Precision Agriculture platform that fuses static edaphic soil sensor profiles with dynamic real-time meteorological forecast streams. Powered by **XGBoost (Hist Tree)**, **TreeSHAP local factor attribution**, **Zero-CSV SQLite relational storage**, and **FastAPI / Streamlit** user interfaces.
 
 ---
 
-## 🌟 Key Features
+## 🌟 Core Feature Scope
 
-- 🎯 **High-Accuracy Crop Recommendation**: Multi-class XGBoost classifier predicting across **22 crops** with **>99% accuracy**.
-- 🔍 **Explainable AI (SHAP)**: Local and global SHAP feature attribution charts explaining *why* Nitrogen, Phosphorus, Potassium, Temperature, Humidity, pH, or Rainfall impacted each decision.
-- 🌦️ **Real-Time Weather Intelligence**: 1-click global weather lookup (temperature, humidity, seasonal rainfall) via the Open-Meteo Geocoding & Weather API.
-- 🚜 **Actionable Farmer Advisory**: Customized fertilizer suggestions (Urea, DAP, MOP), pH amendments (agricultural lime / gypsum), and irrigation schedules.
-- 📊 **Model Analytics & Validation**: Interactive Confusion Matrix, benchmark comparisons (Random Forest, Decision Tree, SVM), and global feature importance.
-- 🧪 **Soil Type Presets**: Quick-fill buttons for Alluvial, Black Cotton, Red Loam, and Sandy soils.
+- 🎯 **Multi-Modal Feature Synthesis ($X \in \mathbb{R}^{12}$)**:
+  - Soil Nutrient Ratios: $R_{NP} = \frac{N}{P+\epsilon}, R_{NK} = \frac{N}{K+\epsilon}, R_{PK} = \frac{P}{K+\epsilon}$
+  - Temperature-Humidity Index: $THI = 0.8 T_{avg} + \left(\frac{RH}{100}\right)(T_{avg} - 14.4) + 46.4$
+  - Moisture Availability Index: $MAI = \frac{P_{forecast} - \mu_{hist}}{\sigma_{hist}}$
+- 🏆 **Ranked Crop Prediction**: Top-3 climate-resilient crop recommendations with calibrated suitability percentages based on XGBoost multi-class probabilities (**98.86% Accuracy, 0.9885 Macro $F_1$**).
+- 🔍 **TreeSHAP Explainability Dashboard**: Sub-150ms exact local factor attributions into intuitive visual impact bars and natural-language causal narratives.
+- 🧪 **Interactive Scenario Simulator**: "What-If" adjustment levers for testing synthetic rainfall shifts, heatwaves, and fertilizer amendments.
+- 🗄️ **Zero-CSV Architecture**: All 2,200 agricultural samples and 30-year historical climate normals are stored in indexed **SQLite tables** (`data/optic_crop.db`) and **Parquet storage**.
+- 🌦️ **Spatial Geohash Caching**: Level-6 Geohash indexing (~1.2 km²) with 1-hour TTL and graceful degradation fallback.
 
 ---
 
-## 🏗️ System Architecture
+## 🏗️ System Architecture & Data Flow
 
 ```mermaid
 flowchart TD
-    subgraph Data & Model Pipeline
-        A[Crop_Recommendation.csv] --> B[model_train.py]
-        B --> C[XGBoost Classifier]
-        B --> D[SHAP TreeExplainer]
-        C --> E[models/ directory]
-        D --> E
+    subgraph Data & Storage Layer (Zero CSV)
+        A[data/optic_crop.db SQLite Database] -->|SQL Query| B[src/db.py]
+        C[data/crop_dataset.parquet] -->|Fast Vector Load| B
     end
 
-    subgraph User & Real-time Integration
-        F[Farmer Soil Inputs: N, P, K, pH] --> G[app.py Web Dashboard]
-        H[Open-Meteo Weather API] --> G
+    subgraph Multi-Modal Feature Synthesis & ML Pipeline
+        B --> D[src/model_train.py]
+        D -->|Feature Synthesis: R_NP, R_NK, R_PK, THI, MAI| E[Dense Vector X in R^12]
+        E --> F[XGBoost Hist Classifier]
+        E --> G[TreeSHAP k-Means Background k=100]
+        F & G --> H[Serialized Models in models/]
     end
 
-    subgraph Inference & XAI Engine
-        G --> I[explain_engine.py]
-        E --> I
-        I --> J[Top-3 Crop Recommendations + Confidence %]
-        I --> K[Interactive SHAP Waterfall & Contribution Charts]
-        I --> L[Actionable Fertilizer & Soil Advisory]
+    subgraph Production REST Microservice
+        I[Open-Meteo API + Geohash Cache] --> J[FastAPI POST /api/v1/recommendations/predict]
+        H --> J
+        J --> K[Top-3 Crop Ranking + Latency Profiler]
+    end
+
+    subgraph User Experience
+        J --> L[Streamlit Farmer / Agronomist Console & What-If Simulator]
     end
 ```
 
 ---
 
-## 📦 Dataset Overview
+## 🚀 Quickstart & Running Locally
 
-The dataset contains **2,200 agricultural samples** across 22 crops with 7 soil and climate parameters:
-
-| Feature | Description | Unit / Range |
-| :--- | :--- | :--- |
-| **N** | Ratio of Nitrogen content in soil | $0 - 150$ |
-| **P** | Ratio of Phosphorus content in soil | $5 - 150$ |
-| **K** | Ratio of Potassium content in soil | $5 - 210$ |
-| **Temperature** | Ambient temperature | $8.8^\circ\text{C} - 43.7^\circ\text{C}$ |
-| **Humidity** | Relative air humidity | $14.3\% - 99.9\%$ |
-| **pH Value** | Soil acidity / alkalinity scale | $3.5 - 9.9$ |
-| **Rainfall** | Annual / seasonal rainfall | $20.2\text{ mm} - 298.6\text{ mm}$ |
-
-**Crops Supported (22)**:
-*Rice, Maize, Chickpea, Kidneybeans, Pigeonpeas, Mothbeans, Mungbean, Blackgram, Lentil, Pomegranate, Banana, Mango, Grapes, Watermelon, Muskmelon, Apple, Orange, Papaya, Coconut, Cotton, Jute, Coffee.*
-
----
-
-## 🚀 Quickstart & Installation
-
-### 1. Clone the Repository
-```bash
-git clone https://github.com/Vinesh-Raja07/ExplainCrop-AI.git
-cd ExplainCrop-AI
-```
-
-### 2. Set Up Virtual Environment (Recommended)
-```bash
-python -m venv venv
-
-# On Windows:
-venv\Scripts\activate
-
-# On macOS/Linux:
-source venv/bin/activate
-```
-
-### 3. Install Dependencies
+### 1. Install Dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-### 4. Train the Model & Generate SHAP Artifacts
+### 2. Initialize Database & Train Multi-Modal XGBoost Model
 ```bash
+python src/db.py
 python src/model_train.py
 ```
 
-### 5. Launch the Web Application
+### 3. Launch Production FastAPI Microservice
+```bash
+uvicorn src.api:app --host 0.0.0.0 --port 8000 --reload
+```
+Interactive Swagger API documentation available at: `http://localhost:8000/docs`
+
+### 4. Launch Streamlit Web Console
 ```bash
 streamlit run app.py
 ```
-Open your browser at `http://localhost:8501`.
+Open your browser at: `http://localhost:8501`
+
+---
+
+## 📡 REST API Interface Specification
+
+### `POST /api/v1/recommendations/predict`
+
+#### Request Payload:
+```json
+{
+  "latitude": 13.0827,
+  "longitude": 80.2707,
+  "soil_profile": {
+    "nitrogen_mg_kg": 135.0,
+    "phosphorus_mg_kg": 42.0,
+    "potassium_mg_kg": 55.0,
+    "ph_level": 6.7
+  },
+  "forecast_window_days": 14
+}
+```
+
+#### Response Structure:
+```json
+{
+  "status": "success",
+  "data": {
+    "recommendations": [
+      {
+        "crop": "Coffee",
+        "viability_score": 0.196,
+        "rank": 1,
+        "explanations": {
+          "base_value": 0.1091,
+          "top_positive_factors": [
+            { "feature": "r_nk", "value": 2.45, "shap_delta": 0.9475 },
+            { "feature": "r_np", "value": 3.21, "shap_delta": 0.5345 }
+          ],
+          "top_negative_factors": [
+            { "feature": "humidity", "value": 80.0, "shap_delta": -2.4819 }
+          ],
+          "human_readable_summary": "Viable alternative due to superior alignment with N:K Nutrient Ratio and N:P Nutrient Ratio."
+        }
+      }
+    ],
+    "geohash6": "tf346t"
+  },
+  "latency_metrics": {
+    "weather_fetch_ms": 38.2,
+    "inference_ms": 5.4,
+    "shap_compute_ms": 31.0,
+    "total_ms": 74.6
+  }
+}
+```
 
 ---
 
@@ -110,46 +141,42 @@ Open your browser at `http://localhost:8501`.
 
 ```
 ExplainCrop-AI/
-├── Crop_Recommendation.csv       # Benchmark agricultural dataset
-├── app.py                         # Interactive Streamlit Web Application
-├── requirements.txt               # Dependencies
-├── README.md                      # Documentation
-├── .gitignore                     # Git ignore configuration
+├── data/
+│   ├── optic_crop.db              # Relational SQLite Database (Zero CSV)
+│   └── crop_dataset.parquet       # High-performance columnar dataset cache
+├── models/
+│   ├── xgboost_crop_model.joblib  # Trained XGBoost Hist classifier
+│   ├── label_encoder.joblib       # 22-class Crop LabelEncoder
+│   ├── shap_explainer.joblib      # TreeSHAP Explainer
+│   ├── shap_background.joblib     # Precomputed k-Means background centroids (k=100)
+│   ├── crop_profiles.json         # Crop physiological benchmarks
+│   └── metadata.json              # Benchmarks & feature importances
 ├── src/
 │   ├── __init__.py
-│   ├── model_train.py             # Model training, benchmarking & SHAP export
-│   ├── explain_engine.py          # Inference, SHAP calculation & agronomic advice
-│   └── weather_service.py         # Open-Meteo live weather integration
-└── models/                        # Serialized ML artifacts
-    ├── xgboost_crop_model.joblib  # Trained XGBoost classifier
-    ├── label_encoder.joblib       # Crop class encoder
-    ├── shap_explainer.joblib      # SHAP TreeExplainer
-    ├── shap_background.joblib     # Background reference data
-    ├── crop_profiles.json         # Crop physiological benchmarks
-    └── metadata.json              # Confusion matrix & benchmark metrics
+│   ├── db.py                      # SQLite & Parquet database manager
+│   ├── model_train.py             # Multi-modal feature engineering & training pipeline
+│   ├── explain_engine.py          # Inference, TreeSHAP attribution & agronomic advisory
+│   ├── weather_service.py         # Open-Meteo live sync & Geohash level-6 caching
+│   └── api.py                     # FastAPI production REST microservice
+├── app.py                         # Streamlit Farmer & Agronomist Console
+├── requirements.txt               # Dependencies
+└── README.md                      # Project documentation
 ```
 
 ---
 
 ## 🏆 Model Benchmarks
 
-| Model | Accuracy | Precision | Recall | F1-Score |
+| Model Architecture | Accuracy | Precision | Recall | Macro F1-Score |
 | :--- | :---: | :---: | :---: | :---: |
-| **XGBoost (Selected)** | **99.32%** | **0.9935** | **0.9932** | **0.9932** |
-| Random Forest | 98.86% | 0.9892 | 0.9886 | 0.9885 |
-| SVM (RBF) | 97.95% | 0.9810 | 0.9795 | 0.9793 |
-| Decision Tree | 97.27% | 0.9740 | 0.9727 | 0.9725 |
+| **XGBoost (Hist Tree - Production)** | **98.86%** | **0.9885** | **0.9886** | **0.9885** |
+| Random Forest | 99.32% | 0.9932 | 0.9932 | 0.9932 |
+| SVM (RBF) | 97.73% | 0.9769 | 0.9773 | 0.9769 |
+| Decision Tree | 95.45% | 0.9540 | 0.9545 | 0.9540 |
 
 ---
 
-## 📜 License
+## 📜 License & Author
 
-Distributed under the **MIT License**. See `LICENSE` for more information.
-
----
-
-## 👨‍💻 Author
-
-**Vinesh Raja**  
-- GitHub: [@Vinesh-Raja07](https://github.com/Vinesh-Raja07)
-- Repository: [ExplainCrop-AI](https://github.com/Vinesh-Raja07/ExplainCrop-AI)
+- **Author**: Vinesh Raja ([@Vinesh-Raja07](https://github.com/Vinesh-Raja07))
+- **License**: MIT License

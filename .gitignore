@@ -39,6 +39,5 @@ ENV/
 # OS files
 .DS_Store
 Thumbs.db
-
-# Large raw archive files (optional, dataset is included in repo as CSV)
+*.log
 *.zip
