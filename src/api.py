@@ -11,8 +11,12 @@ import os
 import sys
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
-from fastapi import FastAPI, HTTPException, Query, status
+from fastapi import FastAPI, HTTPException, Query, status, Request
 from fastapi.middleware.cors import CORSMiddleware
+
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 # Ensure workspace root is in sys.path
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -22,6 +26,9 @@ if BASE_DIR not in sys.path:
 from src.explain_engine import get_engine
 from src.weather_service import fetch_weather_stream, geocode_location
 
+# Initialize Rate Limiter
+limiter = Limiter(key_func=get_remote_address)
+
 # Initialize FastAPI App
 app = FastAPI(
     title="CropMind AI: Climate-Resilient Crop Recommendation Engine",
@@ -30,6 +37,8 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS configuration
 app.add_middleware(
@@ -145,7 +154,8 @@ def get_metadata():
     status_code=status.HTTP_200_OK,
     tags=["Core Inference"],
 )
-def predict_crop_recommendations(payload: PredictRequest):
+@limiter.limit("10/minute")
+def predict_crop_recommendations(request: Request, payload: PredictRequest):
     """
     TRD Section 3.4 Production Endpoint:
     Automates ingestion of GPS coordinates, retrieves/caches micro-weather vectors,
@@ -266,7 +276,8 @@ def predict_crop_recommendations(payload: PredictRequest):
 
 
 @app.post("/api/v1/recommendations/simulate", tags=["Scenario Simulation"])
-def simulate_what_if(payload: SimulationRequest):
+@limiter.limit("20/minute")
+def simulate_what_if(request: Request, payload: SimulationRequest):
     """
     PRD Section 2.2 'What-If' Adjustment Tool:
     Allows testing synthetic rainfall, supplemental irrigation, or fertilizer adjustments.
@@ -290,7 +301,8 @@ def simulate_what_if(payload: SimulationRequest):
 
 
 @app.get("/api/v1/geocode", tags=["Utilities"])
-def geocode(city: str = Query(..., description="City or Region name")):
+@limiter.limit("30/minute")
+def geocode(request: Request, city: str = Query(..., description="City or Region name")):
     res = geocode_location(city)
     if not res.get("success"):
         raise HTTPException(status_code=404, detail=res.get("error", "Location not found"))
