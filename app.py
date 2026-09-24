@@ -22,6 +22,7 @@ import plotly.graph_objects as go
 from src.explain_engine import predict_and_explain, get_engine
 from src.weather_service import fetch_weather_stream, geocode_location
 from src.db import load_dataset_from_db
+from src.pdf_generator import generate_crop_report
 
 # Configure Streamlit Page
 st.set_page_config(
@@ -311,6 +312,18 @@ with tab_rec:
             </div>
             """,
             unsafe_allow_html=True,
+        )
+        
+        pdf_bytes = generate_crop_report(
+            top_rec['crop'], top_rec['viability_score'],
+            n_val, p_val, k_val, temp_val, hum_val, ph_val, rain_val,
+            top_rec['explanations']['human_readable_summary']
+        )
+        st.download_button(
+            label="📥 Download PDF Report",
+            data=pdf_bytes,
+            file_name=f"{top_rec['crop']}_report.pdf",
+            mime="application/pdf"
         )
 
     with c2:
