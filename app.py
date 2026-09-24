@@ -284,7 +284,7 @@ with st.sidebar:
     st.caption("Inference Engine: FastAPI / XGBoost Hist")
 
 # Stitch Navigation Tabs
-tab_rec, tab_whatif, tab_analytics, tab_db, tab_multimodal, tab_history, tab_batch = st.tabs(
+tab_rec, tab_whatif, tab_analytics, tab_db, tab_multimodal, tab_history, tab_batch, tab_admin = st.tabs(
     [
         "Recommendations & Factor Attribution",
         "Scenario Simulation",
@@ -292,7 +292,8 @@ tab_rec, tab_whatif, tab_analytics, tab_db, tab_multimodal, tab_history, tab_bat
         "Database Records",
         "🛰️ Multimodal India DataCube (YieldSAT / CropClimateX)",
         "My History",
-        "Batch Prediction"
+        "Batch Prediction",
+        "Admin Dashboard"
     ]
 )
 
@@ -992,3 +993,32 @@ with tab_batch:
                         st.error(f"Error: {res.text}")
                 except Exception as e:
                     st.error(f"Failed to connect to backend: {e}")
+
+# ==============================================================================
+# TAB 8: ADMIN DASHBOARD
+# ==============================================================================
+with tab_admin:
+    st.header("Admin Dashboard")
+    
+    # We could theoretically check if the user is an admin via JWT or state
+    # For now, let's just make the request.
+    if st.button("Refresh Admin Metrics"):
+        with st.spinner("Fetching system metrics..."):
+            headers = {"Authorization": f"Bearer {st.session_state['access_token']}"}
+            try:
+                res = requests.get(f"{API_URL}/admin/metrics", headers=headers)
+                if res.status_code == 200:
+                    metrics = res.json()["data"]
+                    
+                    col1, col2, col3, col4 = st.columns(4)
+                    col1.metric("Total Users", metrics["total_users"])
+                    col2.metric("Total Predictions", metrics["total_predictions"])
+                    col3.metric("Top Predicted Crop", metrics["top_crop"])
+                    col4.metric("System Status", metrics["system_status"])
+                    
+                elif res.status_code == 403:
+                    st.error("Access Denied: You must be an Admin to view this dashboard.")
+                else:
+                    st.error(f"Error fetching metrics: {res.text}")
+            except Exception as e:
+                st.error(f"Connection failed: {e}")
