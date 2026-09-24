@@ -284,13 +284,14 @@ with st.sidebar:
     st.caption("Inference Engine: FastAPI / XGBoost Hist")
 
 # Stitch Navigation Tabs
-tab_rec, tab_whatif, tab_analytics, tab_db, tab_multimodal = st.tabs(
+tab_rec, tab_whatif, tab_analytics, tab_db, tab_multimodal, tab_history = st.tabs(
     [
         "Recommendations & Factor Attribution",
         "Scenario Simulation",
         "Model Validation & Metrics",
         "Database Records",
         "🛰️ Multimodal India DataCube (YieldSAT / CropClimateX)",
+        "My History"
     ]
 )
 
@@ -931,3 +932,28 @@ with tab_multimodal:
 
             st.info(f"💡 **Agronomic Synthesis**: {pred_res['explanation']}")
 
+
+# ==============================================================================
+# TAB 6: MY HISTORY
+# ==============================================================================
+with tab_history:
+    st.markdown("### Prediction History")
+    st.markdown("Your previous crop recommendations are securely stored and logged here.")
+    if st.button("Refresh History"):
+        st.rerun()
+
+    headers = {"Authorization": f"Bearer {st.session_state['token']}"}
+    try:
+        res = requests.get(f"{API_URL}/recommendations/history", headers=headers)
+        if res.status_code == 200:
+            history_data = res.json().get("data", [])
+            if len(history_data) > 0:
+                df_history = pd.DataFrame(history_data)
+                df_history = df_history.drop(columns=["id", "user_id"])
+                st.dataframe(df_history, use_container_width=True)
+            else:
+                st.info("No prediction history found. Run a recommendation first!")
+        else:
+            st.error("Could not fetch history.")
+    except Exception as e:
+        st.error(f"API Error: {e}")
