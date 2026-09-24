@@ -391,6 +391,26 @@ def get_prediction_history(request: Request, current_user: str = Depends(get_cur
     history = [dict(row) for row in rows]
     return {"status": "success", "data": history}
 
+from fastapi import UploadFile, File
+import pandas as pd
+import io
+
+@app.post("/api/v1/recommendations/predict/batch", tags=["Core Inference"])
+@limiter.limit("5/minute")
+def predict_batch(request: Request, file: UploadFile = File(...), current_user: str = Depends(get_current_user)):
+    """Handles bulk CSV predictions."""
+    try:
+        contents = file.file.read()
+        df = pd.read_csv(io.BytesIO(contents))
+        
+        # Ensure correct column names via mapping if necessary, or assume already correct.
+        engine = get_engine()
+        results = engine.predict_batch(df)
+        
+        return {"status": "success", "data": results}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+        
 @app.post("/api/v1/recommendations/simulate", tags=["Scenario Simulation"])
 @limiter.limit("20/minute")
 def simulate_what_if(request: Request, payload: SimulationRequest):
