@@ -23,6 +23,9 @@ from src.explain_engine import predict_and_explain, get_engine
 from src.weather_service import fetch_weather_stream, geocode_location
 from src.db import load_dataset_from_db
 from src.pdf_generator import generate_crop_report
+import requests
+
+API_URL = "http://localhost:8000/api/v1"
 
 # Configure Streamlit Page
 st.set_page_config(
@@ -160,8 +163,59 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+if "token" not in st.session_state:
+    st.session_state["token"] = None
+if "username" not in st.session_state:
+    st.session_state["username"] = None
+
+def login_form():
+    st.subheader("Login to CropMind AI")
+    with st.form("login_form"):
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        submitted = st.form_submit_button("Login")
+        if submitted:
+            res = requests.post(f"{API_URL}/auth/login", data={"username": username, "password": password})
+            if res.status_code == 200:
+                st.session_state["token"] = res.json()["access_token"]
+                st.session_state["username"] = username
+                st.rerun()
+            else:
+                st.error("Invalid credentials")
+
+def register_form():
+    st.subheader("Register New Account")
+    with st.form("register_form"):
+        username = st.text_input("New Username")
+        password = st.text_input("New Password", type="password")
+        submitted = st.form_submit_button("Register")
+        if submitted:
+            res = requests.post(f"{API_URL}/auth/register", json={"username": username, "password": password})
+            if res.status_code == 200:
+                st.session_state["token"] = res.json()["access_token"]
+                st.session_state["username"] = username
+                st.rerun()
+            else:
+                st.error("Registration failed. Username may exist.")
+
+if st.session_state["token"] is None:
+    t1, t2 = st.tabs(["Login", "Register"])
+    with t1:
+        login_form()
+    with t2:
+        register_form()
+    st.stop()
+    
+# --- AUTHENTICATED DASHBOARD ---
+
 # Stitch Sidebar Navigation
 with st.sidebar:
+    st.markdown(f"**Welcome, {st.session_state['username']}!**")
+    if st.button("Logout", key="logout"):
+        st.session_state["token"] = None
+        st.session_state["username"] = None
+        st.rerun()
+        
     st.markdown("### Interface Mode")
     st.session_state["persona"] = st.radio(
         "Select User Persona",
