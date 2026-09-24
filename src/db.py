@@ -236,6 +236,38 @@ def get_historical_climate_fallback(lat: float, lon: float, geohash6: str = "") 
     }
 
 
+def get_admin_metrics() -> Dict[str, Any]:
+    """Returns system-wide metrics for the admin dashboard."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT COUNT(*) as count FROM users")
+    total_users = cursor.fetchone()["count"]
+    
+    cursor.execute("SELECT COUNT(*) as count FROM prediction_history")
+    total_predictions = cursor.fetchone()["count"]
+    
+    # Get top predicted crop
+    cursor.execute("""
+        SELECT predicted_crop, COUNT(*) as count 
+        FROM prediction_history 
+        GROUP BY predicted_crop 
+        ORDER BY count DESC 
+        LIMIT 1
+    """)
+    row = cursor.fetchone()
+    top_crop = row["predicted_crop"] if row else "N/A"
+    
+    conn.close()
+    
+    return {
+        "total_users": total_users,
+        "total_predictions": total_predictions,
+        "top_crop": top_crop,
+        "system_status": "Healthy"
+    }
+
+
 if __name__ == "__main__":
     init_database()
     csv_cand = os.path.join(BASE_DIR, "Crop_Recommendation.csv")
