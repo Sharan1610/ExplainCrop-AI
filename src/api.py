@@ -11,8 +11,9 @@ import os
 import sys
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
-from fastapi import FastAPI, HTTPException, Query, status, Request
+from fastapi import FastAPI, HTTPException, Query, status, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from loguru import logger
 
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -26,6 +27,11 @@ if BASE_DIR not in sys.path:
 
 from src.explain_engine import get_engine
 from src.weather_service import fetch_weather_stream, geocode_location
+from src.db import get_db_connection
+from src.security import verify_password, get_password_hash, create_access_token
+import sqlite3
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/login")
 
 # Initialize Rate Limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -57,6 +63,16 @@ class SoilProfile(BaseModel):
     phosphorus_mg_kg: float = Field(..., ge=0.0, le=300.0, description="Phosphorus content (mg/kg or ratio)", example=42.0)
     potassium_mg_kg: float = Field(..., ge=0.0, le=300.0, description="Potassium content (mg/kg or ratio)", example=55.0)
     ph_level: float = Field(..., ge=2.0, le=12.0, description="Soil pH level", example=6.7)
+
+
+class UserCreate(BaseModel):
+    username: str
+    password: str
+    role: Optional[str] = "Farmer"
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
 
 
 class PredictRequest(BaseModel):
@@ -147,6 +163,53 @@ def get_metadata():
             "feature_labels": engine.feature_labels,
         },
     }
+
+# --- AUTHENTICATION ROUTES ---
+
+def get_current_user(token: str = Depends(oauth2_scheme)):
+    # Very basic validation just to extract user
+    from jose import jwt, JWTError
+    from src.security import SECRET_KEY, ALGORITHM
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise HTTPException(status_code=401, detail="Invalid auth token")
+        return username
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid auth token")
+
+@app.post("/api/v1/auth/register", response_model=Token, tags=["Auth"])
+def register(user: UserCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    hashed_pwd = get_password_hash(user.password)
+    try:
+        cursor.execute(
+            "INSERT INTO users (username, hashed_password, role) VALUES (?, ?, ?)",
+            (user.username, hashed_pwd, user.role)
+        )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Username already registered")
+    conn.close()
+    access_token = create_access_token(data={"sub": user.username})
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@app.post("/api/v1/auth/login", response_model=Token, tags=["Auth"])
+def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT hashed_password FROM users WHERE username = ?", (form_data.username,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row or not verify_password(form_data.password, row["hashed_password"]):
+        raise HTTPException(status_code=400, detail="Incorrect username or password")
+    
+    access_token = create_access_token(data={"sub": form_data.username})
+    return {"access_token": access_token, "token_type": "bearer"}
+
 
 
 @app.post(
