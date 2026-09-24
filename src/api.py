@@ -219,7 +219,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
     tags=["Core Inference"],
 )
 @limiter.limit("10/minute")
-def predict_crop_recommendations(request: Request, payload: PredictRequest):
+def predict_crop_recommendations(request: Request, payload: PredictRequest, current_user: str = Depends(get_current_user)):
     """
     TRD Section 3.4 Production Endpoint:
     Automates ingestion of GPS coordinates, retrieves/caches micro-weather vectors,
