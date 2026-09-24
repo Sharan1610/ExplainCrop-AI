@@ -15,6 +15,7 @@ from fastapi import FastAPI, HTTPException, Query, status, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from loguru import logger
+import numpy as np
 
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
