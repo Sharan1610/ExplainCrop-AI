@@ -411,6 +411,24 @@ def predict_batch(request: Request, file: UploadFile = File(...), current_user: 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
         
+@app.get("/api/v1/admin/metrics", tags=["Admin"])
+@limiter.limit("20/minute")
+def get_admin_metrics_api(request: Request, current_user: str = Depends(get_current_user)):
+    """Fetches system health and prediction metrics for the admin dashboard."""
+    # In a real app, verify the user has the 'Admin' role here.
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT role FROM users WHERE username = ?", (current_user,))
+    user_row = cursor.fetchone()
+    conn.close()
+    
+    if not user_row or user_row["role"] != "Admin":
+        raise HTTPException(status_code=403, detail="Not authorized. Admin role required.")
+        
+    from src.db import get_admin_metrics
+    metrics = get_admin_metrics()
+    return {"status": "success", "data": metrics}
+        
 @app.post("/api/v1/recommendations/simulate", tags=["Scenario Simulation"])
 @limiter.limit("20/minute")
 def simulate_what_if(request: Request, payload: SimulationRequest):
