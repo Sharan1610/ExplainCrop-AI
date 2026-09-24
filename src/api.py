@@ -13,6 +13,7 @@ from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 from fastapi import FastAPI, HTTPException, Query, status, Request
 from fastapi.middleware.cors import CORSMiddleware
+from loguru import logger
 
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -175,6 +176,9 @@ def predict_crop_recommendations(request: Request, payload: PredictRequest):
     temperature = weather_stream["temperature_avg"]
     humidity = weather_stream["humidity_avg"]
     rainfall = weather_stream["rainfall_equivalent"]
+    
+    logger.info(f"Incoming prediction request for lat: {payload.latitude}, lon: {payload.longitude}")
+    logger.info(f"Weather data retrieved: Temp={temperature}C, Humidity={humidity}%, Rain={rainfall}mm")
 
     # 2. XGBoost Multi-Class Inference & TreeSHAP Attribution
     engine = get_engine()
@@ -252,6 +256,8 @@ def predict_crop_recommendations(request: Request, payload: PredictRequest):
                     },
                 }
             )
+            
+    logger.info(f"Inference completed in {total_ms:.1f}ms. Top recommendation: {recommendations[0]['crop']}")
 
     return {
         "status": "success",
