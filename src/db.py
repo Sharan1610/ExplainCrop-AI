@@ -57,6 +57,25 @@ def init_database():
     );
     """)
 
+    # 1.6 Prediction History Table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS prediction_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        nitrogen REAL,
+        phosphorus REAL,
+        potassium REAL,
+        temperature REAL,
+        humidity REAL,
+        ph REAL,
+        rainfall REAL,
+        predicted_crop TEXT NOT NULL,
+        confidence REAL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users (id)
+    );
+    """)
+
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_crop ON soil_climate_samples (crop);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_soil_params ON soil_climate_samples (nitrogen, phosphorus, potassium, ph);")
 
