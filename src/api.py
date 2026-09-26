@@ -183,6 +183,37 @@ def get_metadata():
 
 # --- AUTHENTICATION ROUTES ---
 
+from fastapi import Security
+from fastapi.security import APIKeyHeader
+from typing import Optional
+
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+def get_current_user_or_api_key(token: Optional[str] = Depends(oauth2_scheme), api_key: Optional[str] = Security(api_key_header)):
+    if api_key:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT u.username FROM api_keys k JOIN users u ON k.user_id = u.id WHERE k.api_key = ?", (api_key,))
+        row = cursor.fetchone()
+        conn.close()
+        if row:
+            return row["username"]
+        raise HTTPException(status_code=401, detail="Invalid API Key")
+        
+    if token:
+        from jose import jwt, JWTError
+        from src.security import SECRET_KEY, ALGORITHM
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            username: str = payload.get("sub")
+            if username is None:
+                raise HTTPException(status_code=401, detail="Invalid auth token")
+            return username
+        except JWTError:
+            raise HTTPException(status_code=401, detail="Invalid auth token")
+            
+    raise HTTPException(status_code=401, detail="Not authenticated")
+
 def get_current_user(token: str = Depends(oauth2_scheme)):
     # Very basic validation just to extract user
     from jose import jwt, JWTError
@@ -236,7 +267,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
     tags=["Core Inference"],
 )
 @limiter.limit("10/minute")
-def predict_crop_recommendations(request: Request, payload: PredictRequest, current_user: str = Depends(get_current_user)):
+def predict_crop_recommendations(request: Request, payload: PredictRequest, current_user: str = Depends(get_current_user_or_api_key)):
     """
     TRD Section 3.4 Production Endpoint:
     Automates ingestion of GPS coordinates, retrieves/caches micro-weather vectors,
@@ -575,3 +606,47 @@ def geocode(request: Request, city: str = Query(..., description="City or Region
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("src.api:app", host="0.0.0.0", port=8000, reload=True)
+@app.post("/api/v1/keys", tags=["Developer Access"])
+@limiter.limit("5/minute")
+def generate_api_key(request: Request, current_user: str = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM users WHERE username = ?", (current_user,))
+    user_row = cursor.fetchone()
+    conn.close()
+    if not user_row:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    from src.db import create_api_key
+    new_key = create_api_key(user_id=user_row["id"])
+    return {"status": "success", "api_key": new_key}
+
+@app.get("/api/v1/keys", tags=["Developer Access"])
+@limiter.limit("20/minute")
+def list_api_keys(request: Request, current_user: str = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM users WHERE username = ?", (current_user,))
+    user_row = cursor.fetchone()
+    conn.close()
+    if not user_row:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    from src.db import get_user_api_keys
+    keys = get_user_api_keys(user_id=user_row["id"])
+    return {"status": "success", "data": keys}
+
+@app.delete("/api/v1/keys/{key_id}", tags=["Developer Access"])
+@limiter.limit("5/minute")
+def revoke_api_key(request: Request, key_id: int, current_user: str = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM users WHERE username = ?", (current_user,))
+    user_row = cursor.fetchone()
+    conn.close()
+    if not user_row:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    from src.db import delete_api_key
+    delete_api_key(key_id=key_id, user_id=user_row["id"])
+    return {"status": "success"}
