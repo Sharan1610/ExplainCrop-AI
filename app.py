@@ -526,6 +526,26 @@ with tab_rec:
                     unsafe_allow_html=True,
                 )
 
+    # FEEDBACK WIDGET
+    st.markdown("---")
+    st.markdown("### Provide Feedback on this Recommendation")
+    with st.expander("Rate this Prediction", expanded=False):
+        with st.form("feedback_form"):
+            rating = st.selectbox("How accurate was this recommendation?", ["👍 Excellent", "👌 Good", "👎 Poor"])
+            comments = st.text_area("Additional Comments")
+            fb_submit = st.form_submit_button("Submit Feedback")
+            if fb_submit:
+                payload = {"rating": rating, "comments": comments}
+                headers = {"Authorization": f"Bearer {st.session_state['token']}"}
+                try:
+                    res = requests.post(f"{API_URL}/feedback", headers=headers, json=payload)
+                    if res.status_code == 200:
+                        st.success("Thank you for your feedback! It helps improve CropMind AI.")
+                    else:
+                        st.error("Failed to submit feedback.")
+                except Exception as e:
+                    st.error(f"API Error: {e}")
+
 # ==============================================================================
 # TAB 2: SCENARIO SIMULATION
 # ==============================================================================
@@ -1016,6 +1036,16 @@ with tab_admin:
                     col2.metric("Total Predictions", metrics["total_predictions"])
                     col3.metric("Top Predicted Crop", metrics["top_crop"])
                     col4.metric("System Status", metrics["system_status"])
+                    
+                    st.markdown("---")
+                    st.subheader("Recent User Feedback")
+                    fb_res = requests.get(f"{API_URL}/feedback", headers=headers)
+                    if fb_res.status_code == 200:
+                        fbs = fb_res.json().get("data", [])
+                        if fbs:
+                            st.dataframe(pd.DataFrame(fbs), use_container_width=True)
+                        else:
+                            st.info("No feedback records found.")
                     
                 elif res.status_code == 403:
                     st.error("Access Denied: You must be an Admin to view this dashboard.")
