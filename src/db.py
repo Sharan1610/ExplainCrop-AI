@@ -121,6 +121,17 @@ def init_database():
     );
     """)
 
+    # 1.10 Developer API Keys
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS api_keys (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        api_key TEXT NOT NULL UNIQUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users (id)
+    );
+    """)
+
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_crop ON soil_climate_samples (crop);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_soil_params ON soil_climate_samples (nitrogen, phosphorus, potassium, ph);")
 
@@ -338,6 +349,75 @@ def get_all_feedback() -> List[Dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
+def get_weather_cache(geohash6: str, ttl_seconds: int = 3600) -> Optional[Dict[str, Any]]:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT temperature_avg, humidity_avg, rainfall_equivalent, forecast_days, created_at
+        FROM weather_cache
+        WHERE geohash6 = ?
+        ORDER BY created_at DESC LIMIT 1
+    """, (geohash6,))
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        import datetime
+        import time
+        created_at_dt = datetime.datetime.strptime(row["created_at"], "%Y-%m-%d %H:%M:%S")
+        if (datetime.datetime.utcnow() - created_at_dt).total_seconds() < ttl_seconds:
+            return {
+                "temperature_avg": row["temperature_avg"],
+                "humidity_avg": row["humidity_avg"],
+                "rainfall_equivalent": row["rainfall_equivalent"],
+                "rainfall_forecast_sum": row["rainfall_equivalent"], # Approx
+                "forecast_window_days": row["forecast_days"],
+                "is_fallback": False
+            }
+    return None
+
+def set_weather_cache(geohash6: str, lat: float, lon: float, forecast_days: int, temp: float, hum: float, rain: float):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO weather_cache (latitude, longitude, forecast_days, temperature_avg, humidity_avg, rainfall_equivalent, geohash6)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (lat, lon, forecast_days, temp, hum, rain, geohash6))
+    conn.commit()
+    conn.close()
+
+def create_api_key(user_id: int) -> str:
+    import secrets
+    api_key = "cm_" + secrets.token_hex(20)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO api_keys (user_id, api_key)
+        VALUES (?, ?)
+    """, (user_id, api_key))
+    conn.commit()
+    conn.close()
+    return api_key
+
+def get_user_api_keys(user_id: int) -> List[Dict[str, Any]]:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT id, api_key, created_at 
+        FROM api_keys
+        WHERE user_id = ?
+        ORDER BY created_at DESC
+    """, (user_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+def delete_api_key(key_id: int, user_id: int):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM api_keys WHERE id = ? AND user_id = ?", (key_id, user_id))
+    conn.commit()
+    conn.close()
+    
 def get_admin_metrics() -> Dict[str, Any]:
     """Returns system-wide metrics for the admin dashboard."""
     conn = get_db_connection()
