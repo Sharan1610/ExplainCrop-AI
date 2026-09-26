@@ -93,6 +93,19 @@ def init_database():
     );
     """)
 
+    # 1.8 User Feedback Table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS user_feedback (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        prediction_id INTEGER,
+        rating TEXT NOT NULL,
+        comments TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users (id)
+    );
+    """)
+
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_crop ON soil_climate_samples (crop);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_soil_params ON soil_climate_samples (nitrogen, phosphorus, potassium, ph);")
 
@@ -281,6 +294,33 @@ def delete_user_farm(farm_id: int, user_id: int):
     cursor.execute("DELETE FROM user_farms WHERE id = ? AND user_id = ?", (farm_id, user_id))
     conn.commit()
     conn.close()
+
+
+def create_user_feedback(user_id: int, prediction_id: Optional[int], rating: str, comments: str) -> int:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO user_feedback (user_id, prediction_id, rating, comments)
+        VALUES (?, ?, ?, ?)
+    """, (user_id, prediction_id, rating, comments))
+    feedback_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return feedback_id
+
+
+def get_all_feedback() -> List[Dict[str, Any]]:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT f.id, f.rating, f.comments, f.created_at, u.username 
+        FROM user_feedback f
+        JOIN users u ON f.user_id = u.id
+        ORDER BY f.created_at DESC
+    """)
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
 
 
 def get_admin_metrics() -> Dict[str, Any]:
