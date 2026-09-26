@@ -287,7 +287,7 @@ with st.sidebar:
     st.caption("Inference Engine: FastAPI / XGBoost Hist")
 
 # Stitch Navigation Tabs
-tab_rec, tab_whatif, tab_analytics, tab_db, tab_multimodal, tab_history, tab_batch, tab_admin, tab_farms = st.tabs(
+tab_rec, tab_whatif, tab_analytics, tab_db, tab_multimodal, tab_history, tab_batch, tab_admin, tab_farms, tab_api = st.tabs(
     [
         "Recommendations & Factor Attribution",
         "Scenario Simulation",
@@ -297,7 +297,8 @@ tab_rec, tab_whatif, tab_analytics, tab_db, tab_multimodal, tab_history, tab_bat
         "My History",
         "Batch Prediction",
         "Admin Dashboard",
-        "My Farms"
+        "My Farms",
+        "Developer API"
     ]
 )
 
@@ -1123,3 +1124,51 @@ with tab_farms:
     except Exception as e:
         st.error(f"API Error: {e}")
 
+
+# ==============================================================================
+# TAB 10: DEVELOPER API
+# ==============================================================================
+with tab_api:
+    st.header("Developer API Keys")
+    st.write("Generate API keys to programmatically interact with the CropMind AI prediction engine.")
+    
+    col_k1, col_k2 = st.columns([1, 2])
+    with col_k1:
+        if st.button("Generate New API Key"):
+            headers = {"Authorization": f"Bearer {st.session_state['token']}"}
+            res = requests.post(f"{API_URL}/keys", headers=headers)
+            if res.status_code == 200:
+                new_key = res.json()["api_key"]
+                st.success("API Key Generated Successfully!")
+                st.code(new_key, language="bash")
+                st.info("Please copy your key now. For security reasons, you cannot view it again.")
+            else:
+                st.error("Failed to generate API Key.")
+                
+    with col_k2:
+        st.subheader("Your Active API Keys")
+        headers = {"Authorization": f"Bearer {st.session_state['token']}"}
+        res = requests.get(f"{API_URL}/keys", headers=headers)
+        if res.status_code == 200:
+            keys = res.json().get("data", [])
+            if keys:
+                for k in keys:
+                    st.markdown(f"**Key ID:** {k['id']} | **Created:** {k['created_at']}")
+                    if st.button(f"Revoke Key {k['id']}", key=f"revoke_{k['id']}"):
+                        d_res = requests.delete(f"{API_URL}/keys/{k['id']}", headers=headers)
+                        if d_res.status_code == 200:
+                            st.success(f"Key {k['id']} revoked.")
+                            st.rerun()
+                        else:
+                            st.error("Failed to revoke key.")
+                    st.markdown("---")
+            else:
+                st.info("You don't have any active API keys.")
+                
+    st.markdown("### Example Usage")
+    st.code('''
+curl -X POST "http://localhost:8000/api/v1/recommendations/predict" \\
+     -H "X-API-Key: cm_your_api_key_here" \\
+     -H "Content-Type: application/json" \\
+     -d '{"latitude": 13.0, "longitude": 80.2, "nitrogen": 90, "phosphorus": 42, "potassium": 43, "ph": 6.5}'
+    ''', language="bash")
