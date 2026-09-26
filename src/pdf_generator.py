@@ -44,4 +44,4 @@ def generate_crop_report(crop_name: str, viability: float, n: float, p: float, k
     pdf.set_font("Helvetica", "", 10)
     pdf.multi_cell(0, 8, summary)
     
-    return pdf.output(dest="S").encode("latin-1")
+    return bytes(pdf.output())
