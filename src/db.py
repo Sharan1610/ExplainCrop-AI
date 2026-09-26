@@ -76,6 +76,23 @@ def init_database():
     );
     """)
 
+    # 1.7 User Farms Table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS user_farms (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        farm_name TEXT NOT NULL,
+        latitude REAL,
+        longitude REAL,
+        nitrogen REAL,
+        phosphorus REAL,
+        potassium REAL,
+        ph REAL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users (id)
+    );
+    """)
+
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_crop ON soil_climate_samples (crop);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_soil_params ON soil_climate_samples (nitrogen, phosphorus, potassium, ph);")
 
@@ -234,6 +251,36 @@ def get_historical_climate_fallback(lat: float, lon: float, geohash6: str = "") 
         "is_fallback": True,
         "fallback_region": "Default Global",
     }
+
+
+def create_user_farm(user_id: int, farm_name: str, lat: float, lon: float, n: float, p: float, k: float, ph: float) -> int:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO user_farms (user_id, farm_name, latitude, longitude, nitrogen, phosphorus, potassium, ph)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (user_id, farm_name, lat, lon, n, p, k, ph))
+    farm_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return farm_id
+
+
+def get_user_farms(user_id: int) -> List[Dict[str, Any]]:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM user_farms WHERE user_id = ?", (user_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def delete_user_farm(farm_id: int, user_id: int):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM user_farms WHERE id = ? AND user_id = ?", (farm_id, user_id))
+    conn.commit()
+    conn.close()
 
 
 def get_admin_metrics() -> Dict[str, Any]:
