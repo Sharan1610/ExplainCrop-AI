@@ -228,14 +228,14 @@ def export_to_parquet():
     conn = get_db_connection()
     df = pd.read_sql_query("SELECT nitrogen, phosphorus, potassium, temperature, humidity, ph, rainfall, crop FROM soil_climate_samples", conn)
     conn.close()
-    df.to_parquet(PARQUET_PATH, index=False)
+    df.to_parquet(PARQUET_PATH, engine="fastparquet", index=False)
     return df
 
 
 def load_dataset_from_db() -> pd.DataFrame:
     """Loads the entire crop dataset directly from SQLite or Parquet without CSV."""
     if os.path.exists(PARQUET_PATH):
-        return pd.read_parquet(PARQUET_PATH)
+        return pd.read_parquet(PARQUET_PATH, engine="fastparquet")
     
     conn = get_db_connection()
     df = pd.read_sql_query(
