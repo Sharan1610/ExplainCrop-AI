@@ -38,7 +38,7 @@ st.set_page_config(
 # Google Stitch Enterprise Design System CSS
 st.markdown(
     """
-    <style>
+<style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
     html, body, [class*="css"] {
@@ -146,8 +146,8 @@ if "persona" not in st.session_state:
 
 # Stitch Header
 st.markdown(
-    """
-    <div class="stitch-header">
+    f"""
+<div class="stitch-header">
         <div>
             <div class="stitch-brand">CropMind AI: Climate-Resilient Recommendation System</div>
             <div class="stitch-tagline">
