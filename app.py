@@ -284,7 +284,7 @@ with st.sidebar:
     st.caption("Inference Engine: FastAPI / XGBoost Hist")
 
 # Stitch Navigation Tabs
-tab_rec, tab_whatif, tab_analytics, tab_db, tab_multimodal, tab_history, tab_batch, tab_admin = st.tabs(
+tab_rec, tab_whatif, tab_analytics, tab_db, tab_multimodal, tab_history, tab_batch, tab_admin, tab_farms = st.tabs(
     [
         "Recommendations & Factor Attribution",
         "Scenario Simulation",
@@ -293,7 +293,8 @@ tab_rec, tab_whatif, tab_analytics, tab_db, tab_multimodal, tab_history, tab_bat
         "🛰️ Multimodal India DataCube (YieldSAT / CropClimateX)",
         "My History",
         "Batch Prediction",
-        "Admin Dashboard"
+        "Admin Dashboard",
+        "My Farms"
     ]
 )
 
@@ -972,7 +973,7 @@ with tab_batch:
     if uploaded_file is not None:
         if st.button("Run Batch Prediction"):
             with st.spinner("Processing batch file..."):
-                headers = {"Authorization": f"Bearer {st.session_state['access_token']}"}
+                headers = {"Authorization": f"Bearer {st.session_state['token']}"}
                 files = {"file": (uploaded_file.name, uploaded_file.getvalue(), "text/csv")}
                 try:
                     res = requests.post(f"{API_URL}/recommendations/predict/batch", headers=headers, files=files)
@@ -1004,7 +1005,7 @@ with tab_admin:
     # For now, let's just make the request.
     if st.button("Refresh Admin Metrics"):
         with st.spinner("Fetching system metrics..."):
-            headers = {"Authorization": f"Bearer {st.session_state['access_token']}"}
+            headers = {"Authorization": f"Bearer {st.session_state['token']}"}
             try:
                 res = requests.get(f"{API_URL}/admin/metrics", headers=headers)
                 if res.status_code == 200:
@@ -1022,3 +1023,70 @@ with tab_admin:
                     st.error(f"Error fetching metrics: {res.text}")
             except Exception as e:
                 st.error(f"Connection failed: {e}")
+
+# ==============================================================================
+# TAB 9: MY FARMS
+# ==============================================================================
+with tab_farms:
+    st.header("My Farms (Saved Profiles)")
+    st.write("Save your farm's soil profile and coordinates to quickly load them later.")
+    
+    headers = {"Authorization": f"Bearer {st.session_state['token']}"}
+    
+    # 1. Create a new Farm
+    with st.expander("➕ Add New Farm", expanded=False):
+        with st.form("add_farm_form"):
+            farm_name = st.text_input("Farm Name (e.g., 'North Field')")
+            f_lat = st.number_input("Latitude", value=13.0, min_value=-90.0, max_value=90.0)
+            f_lon = st.number_input("Longitude", value=80.0, min_value=-180.0, max_value=180.0)
+            f_n = st.number_input("Nitrogen (mg/kg)", value=90.0)
+            f_p = st.number_input("Phosphorus (mg/kg)", value=42.0)
+            f_k = st.number_input("Potassium (mg/kg)", value=43.0)
+            f_ph = st.number_input("pH Level", value=6.5, min_value=2.0, max_value=12.0)
+            submitted = st.form_submit_button("Save Farm")
+            
+            if submitted and farm_name:
+                payload = {
+                    "farm_name": farm_name, "latitude": f_lat, "longitude": f_lon,
+                    "nitrogen": f_n, "phosphorus": f_p, "potassium": f_k, "ph": f_ph
+                }
+                res = requests.post(f"{API_URL}/farms", headers=headers, json=payload)
+                if res.status_code == 200:
+                    st.success(f"Farm '{farm_name}' saved successfully!")
+                else:
+                    st.error("Failed to save farm.")
+
+    # 2. List & Manage Farms
+    if st.button("Refresh My Farms"):
+        st.rerun()
+        
+    try:
+        res = requests.get(f"{API_URL}/farms", headers=headers)
+        if res.status_code == 200:
+            farms = res.json().get("data", [])
+            if not farms:
+                st.info("You haven't saved any farms yet.")
+            else:
+                for farm in farms:
+                    col1, col2, col3 = st.columns([3, 1, 1])
+                    with col1:
+                        st.markdown(f"**{farm['farm_name']}** (Lat: {farm['latitude']}, Lon: {farm['longitude']})")
+                        st.caption(f"N: {farm['nitrogen']} | P: {farm['phosphorus']} | K: {farm['potassium']} | pH: {farm['ph']}")
+                    with col2:
+                        if st.button("Load Profile", key=f"load_{farm['id']}"):
+                            st.session_state["nitrogen"] = farm['nitrogen']
+                            st.session_state["phosphorus"] = farm['phosphorus']
+                            st.session_state["potassium"] = farm['potassium']
+                            st.session_state["ph"] = farm['ph']
+                            st.session_state["active_location"] = farm['farm_name']
+                            st.success(f"Loaded {farm['farm_name']} into recommendation engine!")
+                    with col3:
+                        if st.button("Delete", key=f"del_{farm['id']}", type="primary"):
+                            d_res = requests.delete(f"{API_URL}/farms/{farm['id']}", headers=headers)
+                            if d_res.status_code == 200:
+                                st.rerun()
+        else:
+            st.error("Could not fetch farms.")
+    except Exception as e:
+        st.error(f"API Error: {e}")
+
