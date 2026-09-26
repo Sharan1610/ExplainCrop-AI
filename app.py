@@ -247,7 +247,10 @@ with st.sidebar:
                         st.session_state["rainfall"] = float(w_res["rainfall_equivalent"])
                         st.session_state["active_location"] = f"{geo_res['name']}, {geo_res.get('country','')}".strip(", ")
                         st.session_state["geohash"] = w_res.get("geohash6", "")
-                        st.success(f"Synchronized: {st.session_state['active_location']}")
+                        st.session_state["weather_source"] = w_res.get("source", "unknown")
+                        
+                        source_badge = "⚡ Live API" if w_res.get("source") == "live_api" else "💾 DB Cache" if w_res.get("source") == "cache" else "📊 Historical Fallback"
+                        st.success(f"Synchronized: {st.session_state['active_location']} | {source_badge}")
                     else:
                         st.error(geo_res.get("error", "Geocoding failed."))
             else:
