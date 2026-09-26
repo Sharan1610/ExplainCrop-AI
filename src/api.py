@@ -76,6 +76,16 @@ class Token(BaseModel):
     token_type: str
 
 
+class FarmCreate(BaseModel):
+    farm_name: str
+    latitude: float = Field(..., ge=-90.0, le=90.0)
+    longitude: float = Field(..., ge=-180.0, le=180.0)
+    nitrogen: float = Field(..., ge=0.0)
+    phosphorus: float = Field(..., ge=0.0)
+    potassium: float = Field(..., ge=0.0)
+    ph: float = Field(..., ge=2.0, le=12.0)
+
+
 class PredictRequest(BaseModel):
     latitude: float = Field(..., ge=-90.0, le=90.0, description="GPS Latitude coordinate", example=13.0827)
     longitude: float = Field(..., ge=-180.0, le=180.0, description="GPS Longitude coordinate", example=80.2707)
@@ -428,6 +438,62 @@ def get_admin_metrics_api(request: Request, current_user: str = Depends(get_curr
     from src.db import get_admin_metrics
     metrics = get_admin_metrics()
     return {"status": "success", "data": metrics}
+
+
+@app.post("/api/v1/farms", tags=["Farms"])
+@limiter.limit("10/minute")
+def create_farm_api(request: Request, payload: FarmCreate, current_user: str = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM users WHERE username = ?", (current_user,))
+    user_row = cursor.fetchone()
+    conn.close()
+    if not user_row:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    from src.db import create_user_farm
+    farm_id = create_user_farm(
+        user_id=user_row["id"], 
+        farm_name=payload.farm_name,
+        lat=payload.latitude,
+        lon=payload.longitude,
+        n=payload.nitrogen,
+        p=payload.phosphorus,
+        k=payload.potassium,
+        ph=payload.ph
+    )
+    return {"status": "success", "farm_id": farm_id}
+
+@app.get("/api/v1/farms", tags=["Farms"])
+@limiter.limit("20/minute")
+def get_farms_api(request: Request, current_user: str = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM users WHERE username = ?", (current_user,))
+    user_row = cursor.fetchone()
+    conn.close()
+    if not user_row:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    from src.db import get_user_farms
+    farms = get_user_farms(user_row["id"])
+    return {"status": "success", "data": farms}
+
+@app.delete("/api/v1/farms/{farm_id}", tags=["Farms"])
+@limiter.limit("10/minute")
+def delete_farm_api(request: Request, farm_id: int, current_user: str = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM users WHERE username = ?", (current_user,))
+    user_row = cursor.fetchone()
+    conn.close()
+    if not user_row:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    from src.db import delete_user_farm
+    delete_user_farm(farm_id=farm_id, user_id=user_row["id"])
+    return {"status": "success"}
+
         
 @app.post("/api/v1/recommendations/simulate", tags=["Scenario Simulation"])
 @limiter.limit("20/minute")
