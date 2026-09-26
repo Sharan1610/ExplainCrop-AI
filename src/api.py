@@ -86,6 +86,12 @@ class FarmCreate(BaseModel):
     ph: float = Field(..., ge=2.0, le=12.0)
 
 
+class FeedbackCreate(BaseModel):
+    prediction_id: Optional[int] = None
+    rating: str
+    comments: str
+
+
 class PredictRequest(BaseModel):
     latitude: float = Field(..., ge=-90.0, le=90.0, description="GPS Latitude coordinate", example=13.0827)
     longitude: float = Field(..., ge=-180.0, le=180.0, description="GPS Longitude coordinate", example=80.2707)
@@ -493,6 +499,43 @@ def delete_farm_api(request: Request, farm_id: int, current_user: str = Depends(
     from src.db import delete_user_farm
     delete_user_farm(farm_id=farm_id, user_id=user_row["id"])
     return {"status": "success"}
+
+
+@app.post("/api/v1/feedback", tags=["Feedback"])
+@limiter.limit("5/minute")
+def submit_feedback(request: Request, payload: FeedbackCreate, current_user: str = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM users WHERE username = ?", (current_user,))
+    user_row = cursor.fetchone()
+    conn.close()
+    if not user_row:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    from src.db import create_user_feedback
+    fb_id = create_user_feedback(
+        user_id=user_row["id"], 
+        prediction_id=payload.prediction_id,
+        rating=payload.rating,
+        comments=payload.comments
+    )
+    return {"status": "success", "feedback_id": fb_id}
+
+@app.get("/api/v1/feedback", tags=["Feedback"])
+@limiter.limit("20/minute")
+def get_all_feedback_api(request: Request, current_user: str = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT role FROM users WHERE username = ?", (current_user,))
+    user_row = cursor.fetchone()
+    conn.close()
+    
+    if not user_row or user_row["role"] != "Admin":
+        raise HTTPException(status_code=403, detail="Not authorized. Admin role required.")
+        
+    from src.db import get_all_feedback
+    feedbacks = get_all_feedback()
+    return {"status": "success", "data": feedbacks}
 
         
 @app.post("/api/v1/recommendations/simulate", tags=["Scenario Simulation"])
