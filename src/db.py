@@ -106,6 +106,21 @@ def init_database():
     );
     """)
 
+    # 1.9 Weather API Cache
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS weather_cache (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        latitude REAL NOT NULL,
+        longitude REAL NOT NULL,
+        forecast_days INTEGER NOT NULL,
+        temperature_avg REAL NOT NULL,
+        humidity_avg REAL NOT NULL,
+        rainfall_equivalent REAL NOT NULL,
+        geohash6 TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_crop ON soil_climate_samples (crop);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_soil_params ON soil_climate_samples (nitrogen, phosphorus, potassium, ph);")
 
