@@ -97,9 +97,9 @@ def calculate_fertigation_schedule(
                 tank_b.append(f"{fert_name.replace('_', ' ').title()}: {per_cycle_kg} kg")
                 
     # Target EC Estimation (ppm concentration -> dS/m)
-    # 1 kg WSF in 10,000 Litres = ~100 ppm = ~0.15 dS/m
-    concentration_ppm = (total_wsf_kg_cycle * 1_000_000.0) / max(1000.0, irrigation_volume_litres_cycle)
-    target_ec_dsm = round(0.4 + (concentration_ppm / 700.0), 2)
+    # Standard agricultural water baseline EC (~0.4 dS/m) + salt contribution
+    concentration_ppm = (total_wsf_kg_cycle * 1_000_000.0) / max(5000.0, irrigation_volume_litres_cycle)
+    target_ec_dsm = round(min(3.2, max(0.6, 0.4 + (concentration_ppm / 1500.0))), 2)
     
     return {
         "crop": crop_key,
