@@ -226,6 +226,13 @@ class PdfReportRequest(BaseModel):
     location_name: Optional[str] = Field("Selected Coordinates", json_schema_extra={"example": "Coimbatore, India"})
 
 
+class CropRotationRequest(BaseModel):
+    primary_crop: str = Field(..., json_schema_extra={"example": "Rice"})
+    soil_profile: SoilProfile
+    field_area_acres: Optional[float] = Field(1.0, ge=0.1, le=1000.0, json_schema_extra={"example": 1.0})
+    include_green_manure: Optional[bool] = Field(True, json_schema_extra={"example": True})
+
+
 @app.get("/", tags=["Health & Metadata"])
 def root():
     return {
@@ -834,6 +841,22 @@ def download_pdf_report(request: Request, payload: PdfReportRequest, current_use
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename=CropMind_{payload.crop_name}_Advisory.pdf"}
     )
+
+
+@app.post("/api/v1/advisory/crop-rotation", tags=["Agronomic Advisory"])
+@limiter.limit("60/minute")
+def get_crop_rotation_plan(request: Request, payload: CropRotationRequest, current_user: str = Depends(get_current_user_or_api_key)):
+    from src.crop_rotation import generate_crop_rotation_plan
+    result = generate_crop_rotation_plan(
+        primary_crop=payload.primary_crop,
+        soil_n=payload.soil_profile.nitrogen_mg_kg,
+        soil_p=payload.soil_profile.phosphorus_mg_kg,
+        soil_k=payload.soil_profile.potassium_mg_kg,
+        field_area_acres=payload.field_area_acres or 1.0,
+        include_green_manure=payload.include_green_manure if payload.include_green_manure is not None else True
+    )
+    return {"status": "success", "data": result}
+
 
 
 
