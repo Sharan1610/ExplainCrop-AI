@@ -164,7 +164,7 @@ def search_agronomic_knowledge(
             if token in item_text:
                 score += 0.8
                 
-        if score > 0 or (not tokens and (crop or category)):
+        if score > 0:
             scored_results.append({
                 "relevance_score": round(score, 2),
                 **item
