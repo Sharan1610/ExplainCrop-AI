@@ -1063,6 +1063,36 @@ def delete_parcel_endpoint(request: Request, parcel_id: int, current_user: str =
     return {"status": "success", "message": f"Parcel {parcel_id} deleted successfully"}
 
 
+# --- AGRONOMIC KNOWLEDGE BASE ENDPOINTS ---
+
+@app.get("/api/v1/knowledge/search", tags=["Agronomic Knowledge"])
+@limiter.limit("60/minute")
+def search_knowledge_endpoint(
+    request: Request,
+    query: Optional[str] = Query(None, description="Search keyword, problem, or pest"),
+    crop: Optional[str] = Query(None, description="Specific crop filter"),
+    category: Optional[str] = Query(None, description="Specific topic category"),
+    limit: Optional[int] = Query(5, ge=1, le=20, description="Max results to return")
+):
+    from src.agri_knowledge import search_agronomic_knowledge
+    result = search_agronomic_knowledge(
+        query=query or "",
+        crop=crop,
+        category=category,
+        max_results=limit or 5
+    )
+    return result
+
+
+@app.get("/api/v1/knowledge/categories", tags=["Agronomic Knowledge"])
+@limiter.limit("60/minute")
+def get_knowledge_categories_endpoint(request: Request):
+    from src.agri_knowledge import get_all_categories
+    categories = get_all_categories()
+    return {"status": "success", "data": categories}
+
+
+
 
 
 
