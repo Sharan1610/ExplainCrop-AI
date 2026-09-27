@@ -259,6 +259,23 @@ class MicronutrientRequest(BaseModel):
     soil_s_ppm: Optional[float] = Field(None, ge=0.0, json_schema_extra={"example": 8.5})
 
 
+class CandidateCropItem(BaseModel):
+    crop: str = Field(..., json_schema_extra={"example": "Rice"})
+    viability_score: float = Field(..., ge=0.0, le=1.0, json_schema_extra={"example": 0.92})
+
+
+class CropRankingRequest(BaseModel):
+    candidates: List[CandidateCropItem]
+    temperature_c: float = Field(..., ge=-10.0, le=60.0, json_schema_extra={"example": 28.0})
+    humidity_pct: float = Field(..., ge=0.0, le=100.0, json_schema_extra={"example": 70.0})
+    rainfall_mm: float = Field(..., ge=0.0, le=2000.0, json_schema_extra={"example": 100.0})
+    weight_viability: Optional[float] = Field(0.35, ge=0.0, le=1.0, json_schema_extra={"example": 0.35})
+    weight_profit: Optional[float] = Field(0.25, ge=0.0, le=1.0, json_schema_extra={"example": 0.25})
+    weight_water_efficiency: Optional[float] = Field(0.20, ge=0.0, le=1.0, json_schema_extra={"example": 0.20})
+    weight_resilience: Optional[float] = Field(0.20, ge=0.0, le=1.0, json_schema_extra={"example": 0.20})
+    field_area_acres: Optional[float] = Field(1.0, ge=0.1, le=1000.0, json_schema_extra={"example": 1.0})
+
+
 @app.get("/", tags=["Health & Metadata"])
 def root():
     return {
@@ -926,6 +943,26 @@ def get_micronutrient_advisory(request: Request, payload: MicronutrientRequest, 
         soil_s_ppm=payload.soil_s_ppm
     )
     return {"status": "success", "data": result}
+
+
+@app.post("/api/v1/advisory/mcda-ranking", tags=["Agronomic Advisory"])
+@limiter.limit("60/minute")
+def get_mcda_crop_ranking(request: Request, payload: CropRankingRequest, current_user: str = Depends(get_current_user_or_api_key)):
+    from src.crop_ranking import calculate_topsis_crop_ranking
+    candidate_list = [{"crop": c.crop, "viability_score": c.viability_score} for c in payload.candidates]
+    result = calculate_topsis_crop_ranking(
+        candidate_crops_with_scores=candidate_list,
+        temperature_c=payload.temperature_c,
+        humidity_pct=payload.humidity_pct,
+        rainfall_mm=payload.rainfall_mm,
+        weight_viability=payload.weight_viability or 0.35,
+        weight_profit=payload.weight_profit or 0.25,
+        weight_water_efficiency=payload.weight_water_efficiency or 0.20,
+        weight_resilience=payload.weight_resilience or 0.20,
+        field_area_acres=payload.field_area_acres or 1.0
+    )
+    return {"status": "success", "data": result}
+
 
 
 
