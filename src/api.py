@@ -249,6 +249,16 @@ class FertigationScheduleRequest(BaseModel):
     irrigation_volume_litres_cycle: Optional[float] = Field(8000.0, ge=100.0, json_schema_extra={"example": 8000.0})
 
 
+class MicronutrientRequest(BaseModel):
+    crop_name: str = Field(..., json_schema_extra={"example": "Rice"})
+    soil_ph: float = Field(..., ge=2.0, le=12.0, json_schema_extra={"example": 7.8})
+    organic_matter_pct: Optional[float] = Field(0.75, ge=0.1, le=10.0, json_schema_extra={"example": 0.75})
+    soil_zn_ppm: Optional[float] = Field(None, ge=0.0, json_schema_extra={"example": 0.45})
+    soil_fe_ppm: Optional[float] = Field(None, ge=0.0, json_schema_extra={"example": 3.8})
+    soil_b_ppm: Optional[float] = Field(None, ge=0.0, json_schema_extra={"example": 0.40})
+    soil_s_ppm: Optional[float] = Field(None, ge=0.0, json_schema_extra={"example": 8.5})
+
+
 @app.get("/", tags=["Health & Metadata"])
 def root():
     return {
@@ -900,6 +910,23 @@ def get_fertigation_schedule(request: Request, payload: FertigationScheduleReque
         irrigation_volume_litres_cycle=payload.irrigation_volume_litres_cycle or 8000.0
     )
     return {"status": "success", "data": result}
+
+
+@app.post("/api/v1/advisory/micronutrients", tags=["Agronomic Advisory"])
+@limiter.limit("60/minute")
+def get_micronutrient_advisory(request: Request, payload: MicronutrientRequest, current_user: str = Depends(get_current_user_or_api_key)):
+    from src.micronutrient_advisor import diagnose_micronutrient_deficiencies
+    result = diagnose_micronutrient_deficiencies(
+        crop_name=payload.crop_name,
+        soil_ph=payload.soil_ph,
+        organic_matter_pct=payload.organic_matter_pct or 0.75,
+        soil_zn_ppm=payload.soil_zn_ppm,
+        soil_fe_ppm=payload.soil_fe_ppm,
+        soil_b_ppm=payload.soil_b_ppm,
+        soil_s_ppm=payload.soil_s_ppm
+    )
+    return {"status": "success", "data": result}
+
 
 
 
