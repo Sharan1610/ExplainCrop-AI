@@ -233,6 +233,14 @@ class CropRotationRequest(BaseModel):
     include_green_manure: Optional[bool] = Field(True, json_schema_extra={"example": True})
 
 
+class ClimateAlertsRequest(BaseModel):
+    crop_name: str = Field(..., json_schema_extra={"example": "Rice"})
+    temperature: float = Field(..., ge=-20.0, le=65.0, json_schema_extra={"example": 39.5})
+    humidity: float = Field(..., ge=0.0, le=100.0, json_schema_extra={"example": 35.0})
+    rainfall_14d_mm: float = Field(..., ge=0.0, le=2000.0, json_schema_extra={"example": 10.0})
+    wind_speed_kmh: Optional[float] = Field(12.0, ge=0.0, json_schema_extra={"example": 12.0})
+
+
 @app.get("/", tags=["Health & Metadata"])
 def root():
     return {
@@ -856,6 +864,21 @@ def get_crop_rotation_plan(request: Request, payload: CropRotationRequest, curre
         include_green_manure=payload.include_green_manure if payload.include_green_manure is not None else True
     )
     return {"status": "success", "data": result}
+
+
+@app.post("/api/v1/advisory/climate-alerts", tags=["Agronomic Advisory"])
+@limiter.limit("60/minute")
+def get_climate_alerts(request: Request, payload: ClimateAlertsRequest, current_user: str = Depends(get_current_user_or_api_key)):
+    from src.climate_alerts import evaluate_climate_anomalies
+    result = evaluate_climate_anomalies(
+        crop_name=payload.crop_name,
+        temperature_c=payload.temperature,
+        humidity_pct=payload.humidity,
+        rainfall_14d_mm=payload.rainfall_14d_mm,
+        wind_speed_kmh=payload.wind_speed_kmh or 12.0
+    )
+    return {"status": "success", "data": result}
+
 
 
 
