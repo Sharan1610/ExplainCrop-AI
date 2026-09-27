@@ -1,29 +1,34 @@
 """
 CropMind AI: Farm Spatial Parcel Geometry & Geodesic Field Area Engine
-Computes polygon acreage, perimeter, centroid coordinates, and spatial field compactness from GPS boundaries.
+Computes polygon acreage, perimeter, centroid coordinates, GeoJSON encoding, and spatial field compactness from GPS boundaries.
 """
 
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Dict, Any, List, Tuple, Optional, Union
 import math
+import json
 
 
-def calculate_polygon_area_acres(coordinates: List[Tuple[float, float]]) -> float:
+def calculate_polygon_geodesic_area(coordinates: List[Union[Tuple[float, float], List[float]]]) -> Dict[str, Any]:
     """
-    Computes geodesic polygon area in acres from a list of (lat, lon) coordinates
+    Computes geodesic polygon area in acres, hectares, and sq meters from a list of (lat, lon) coordinates
     using spherical excess projection (WGS84 ellipsoid approximation).
     """
     if len(coordinates) < 3:
-        return 0.0
+        raise ValueError("A valid polygon boundary requires at least 3 coordinates.")
         
     # Radius of earth in meters
     R = 6378137.0
     
+    # Standardize coordinate format to (lat, lon)
+    clean_coords = [(float(c[0]), float(c[1])) for c in coordinates]
+    
     # Convert lat/lon to radians
-    coords_rad = [(math.radians(lat), math.radians(lon)) for lat, lon in coordinates]
+    coords_rad = [(math.radians(lat), math.radians(lon)) for lat, lon in clean_coords]
     
     # Close polygon if not already closed
     if coords_rad[0] != coords_rad[-1]:
         coords_rad.append(coords_rad[0])
+        clean_coords.append(clean_coords[0])
         
     area_sq_meters = 0.0
     num_pts = len(coords_rad)
@@ -35,43 +40,84 @@ def calculate_polygon_area_acres(coordinates: List[Tuple[float, float]]) -> floa
         
     area_sq_meters = abs(area_sq_meters * (R ** 2) / 2.0)
     
-    # 1 Acre = 4046.8564224 square meters
+    # Conversions
     area_acres = area_sq_meters / 4046.8564224
-    return round(area_acres, 3)
-
-
-def calculate_polygon_perimeter_meters(coordinates: List[Tuple[float, float]]) -> float:
-    """Computes total perimeter boundary length in meters using Haversine formulation."""
-    if len(coordinates) < 2:
-        return 0.0
-        
-    R = 6378137.0
-    total_dist = 0.0
+    area_hectares = area_sq_meters / 10000.0
     
-    coords = list(coordinates)
-    if coords[0] != coords[-1]:
-        coords.append(coords[0])
-        
-    for i in range(len(coords) - 1):
-        lat1, lon1 = math.radians(coords[i][0]), math.radians(coords[i][1])
-        lat2, lon2 = math.radians(coords[i+1][0]), math.radians(coords[i+1][1])
+    # Perimeter
+    total_dist = 0.0
+    for i in range(len(clean_coords) - 1):
+        lat1, lon1 = math.radians(clean_coords[i][0]), math.radians(clean_coords[i][1])
+        lat2, lon2 = math.radians(clean_coords[i+1][0]), math.radians(clean_coords[i+1][1])
         dlat = lat2 - lat1
         dlon = lon2 - lon1
-        
         a = math.sin(dlat / 2.0)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2.0)**2
         c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
         total_dist += R * c
         
-    return round(total_dist, 1)
+    # Centroid
+    lats = [c[0] for c in clean_coords[:-1]]
+    lons = [c[1] for c in clean_coords[:-1]]
+    centroid_lat = round(sum(lats) / len(lats), 6)
+    centroid_lon = round(sum(lons) / len(lons), 6)
+    
+    # Shape compactness index
+    compactness = (4.0 * math.pi * area_sq_meters) / (total_dist ** 2) if total_dist > 0 else 0.0
+    compactness = round(min(1.0, max(0.01, compactness)), 3)
+    
+    return {
+        "status": "success",
+        "area_acres": round(area_acres, 3),
+        "area_hectares": round(area_hectares, 3),
+        "area_sq_meters": round(area_sq_meters, 1),
+        "perimeter_meters": round(total_dist, 1),
+        "centroid": {"lat": centroid_lat, "lon": centroid_lon},
+        "compactness_index": compactness,
+        "is_workable": compactness >= 0.45
+    }
 
 
-def calculate_polygon_centroid(coordinates: List[Tuple[float, float]]) -> Tuple[float, float]:
-    """Computes arithmetic centroid of the polygon vertices."""
+def calculate_polygon_area_acres(coordinates: List[Union[Tuple[float, float], List[float]]]) -> float:
+    """Convenience function returning just the acreage."""
+    if len(coordinates) < 3:
+        return 0.0
+    res = calculate_polygon_geodesic_area(coordinates)
+    return res["area_acres"]
+
+
+def calculate_polygon_perimeter_meters(coordinates: List[Union[Tuple[float, float], List[float]]]) -> float:
+    """Convenience function returning perimeter in meters."""
+    if len(coordinates) < 2:
+        return 0.0
+    res = calculate_polygon_geodesic_area(coordinates)
+    return res["perimeter_meters"]
+
+
+def calculate_polygon_centroid(coordinates: List[Union[Tuple[float, float], List[float]]]) -> Tuple[float, float]:
+    """Convenience function returning centroid (lat, lon)."""
     if not coordinates:
         return (0.0, 0.0)
-    lats = [c[0] for c in coordinates]
-    lons = [c[1] for c in coordinates]
+    lats = [float(c[0]) for c in coordinates]
+    lons = [float(c[1]) for c in coordinates]
     return (round(sum(lats) / len(lats), 6), round(sum(lons) / len(lons), 6))
+
+
+def polygon_to_geojson(coordinates: List[Union[Tuple[float, float], List[float]]], properties: Optional[Dict[str, Any]] = None) -> str:
+    """Encodes coordinates into standard GeoJSON Feature (Polygon format with [lon, lat])."""
+    # GeoJSON requires [lon, lat] coordinates
+    poly_coords = [[float(c[1]), float(c[0])] for c in coordinates]
+    if poly_coords[0] != poly_coords[-1]:
+        poly_coords.append(poly_coords[0])
+        
+    feature = {
+        "type": "Feature",
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [poly_coords]
+        },
+        "properties": properties or {}
+    }
+    return json.dumps(feature)
 
 
 def analyze_farm_parcel(
@@ -83,28 +129,20 @@ def analyze_farm_parcel(
     """
     Performs complete spatial geometry evaluation for a farm boundary.
     """
-    area_acres = calculate_polygon_area_acres(boundary_coordinates)
-    perimeter_m = calculate_polygon_perimeter_meters(boundary_coordinates)
-    centroid = calculate_polygon_centroid(boundary_coordinates)
-    area_hectares = round(area_acres * 0.404686, 3)
+    geo_res = calculate_polygon_geodesic_area(boundary_coordinates)
     
-    # Shape compactness index (Isoperimetric Quotient: 4 * pi * Area / Perimeter^2)
-    area_sq_m = area_acres * 4046.856
-    compactness = (4.0 * math.pi * area_sq_m) / (perimeter_m ** 2) if perimeter_m > 0 else 0.0
-    compactness = round(min(1.0, max(0.1, compactness)), 3)
-
     return {
         "parcel_name": parcel_name,
         "primary_crop": primary_crop,
         "soil_type": soil_type,
         "vertices_count": len(boundary_coordinates),
-        "centroid_lat_lon": {"latitude": centroid[0], "longitude": centroid[1]},
+        "centroid_lat_lon": {"latitude": geo_res["centroid"]["lat"], "longitude": geo_res["centroid"]["lon"]},
         "geometry": {
-            "area_acres": area_acres,
-            "area_hectares": area_hectares,
-            "perimeter_meters": perimeter_m,
-            "isoperimetric_compactness_score": compactness,
-            "field_shape_classification": "Regular / High Workability" if compactness >= 0.55 else "Irregular / Narrow Strips"
+            "area_acres": geo_res["area_acres"],
+            "area_hectares": geo_res["area_hectares"],
+            "perimeter_meters": geo_res["perimeter_meters"],
+            "isoperimetric_compactness_score": geo_res["compactness_index"],
+            "field_shape_classification": "Regular / High Workability" if geo_res["compactness_index"] >= 0.45 else "Irregular / Narrow Strips"
         },
         "boundary_coordinates": [{"latitude": c[0], "longitude": c[1]} for c in boundary_coordinates]
     }
