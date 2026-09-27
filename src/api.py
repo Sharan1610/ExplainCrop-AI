@@ -276,6 +276,17 @@ class CropRankingRequest(BaseModel):
     field_area_acres: Optional[float] = Field(1.0, ge=0.1, le=1000.0, json_schema_extra={"example": 1.0})
 
 
+class ParcelCalculateRequest(BaseModel):
+    coordinates: List[List[float]] = Field(..., json_schema_extra={"example": [[11.0168, 76.9558], [11.0180, 76.9558], [11.0180, 76.9575], [11.0168, 76.9575], [11.0168, 76.9558]]})
+
+
+class ParcelCreateRequest(BaseModel):
+    parcel_name: str = Field(..., min_length=1, json_schema_extra={"example": "North Field Block A"})
+    coordinates: List[List[float]] = Field(..., min_length=3, json_schema_extra={"example": [[11.0168, 76.9558], [11.0180, 76.9558], [11.0180, 76.9575], [11.0168, 76.9575], [11.0168, 76.9558]]})
+    primary_crop: Optional[str] = Field("Rice", json_schema_extra={"example": "Rice"})
+    soil_type: Optional[str] = Field("Clay Loam", json_schema_extra={"example": "Clay Loam"})
+
+
 @app.get("/", tags=["Health & Metadata"])
 def root():
     return {
@@ -962,6 +973,95 @@ def get_mcda_crop_ranking(request: Request, payload: CropRankingRequest, current
         field_area_acres=payload.field_area_acres or 1.0
     )
     return {"status": "success", "data": result}
+
+
+# --- SPATIAL PARCELS ENDPOINTS ---
+
+@app.post("/api/v1/parcels/calculate-area", tags=["Spatial Farm Parcels"])
+@limiter.limit("60/minute")
+def calculate_parcel_geometry(request: Request, payload: ParcelCalculateRequest, current_user: str = Depends(get_current_user_or_api_key)):
+    from src.spatial_parcels import calculate_polygon_geodesic_area
+    result = calculate_polygon_geodesic_area(payload.coordinates)
+    return {"status": "success", "data": result}
+
+
+@app.post("/api/v1/parcels", tags=["Spatial Farm Parcels"])
+@limiter.limit("30/minute")
+def create_parcel_endpoint(request: Request, payload: ParcelCreateRequest, current_user: str = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM users WHERE username = ?", (current_user,))
+    user_row = cursor.fetchone()
+    conn.close()
+    if not user_row:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    from src.spatial_parcels import calculate_polygon_geodesic_area, polygon_to_geojson
+    from src.db import create_farm_parcel
+    
+    geo_res = calculate_polygon_geodesic_area(payload.coordinates)
+    geojson_str = polygon_to_geojson(payload.coordinates, properties={"name": payload.parcel_name})
+    
+    parcel_id = create_farm_parcel(
+        user_id=user_row["id"],
+        parcel_name=payload.parcel_name,
+        polygon_geojson=geojson_str,
+        area_acres=geo_res["area_acres"],
+        centroid_lat=geo_res["centroid"]["lat"],
+        centroid_lon=geo_res["centroid"]["lon"],
+        primary_crop=payload.primary_crop,
+        soil_type=payload.soil_type or "Clay Loam"
+    )
+    
+    return {
+        "status": "success",
+        "parcel_id": parcel_id,
+        "data": {
+            "parcel_name": payload.parcel_name,
+            "area_acres": geo_res["area_acres"],
+            "area_hectares": geo_res["area_hectares"],
+            "area_sq_meters": geo_res["area_sq_meters"],
+            "perimeter_meters": geo_res["perimeter_meters"],
+            "centroid": geo_res["centroid"],
+            "primary_crop": payload.primary_crop,
+            "soil_type": payload.soil_type
+        }
+    }
+
+
+@app.get("/api/v1/parcels", tags=["Spatial Farm Parcels"])
+@limiter.limit("60/minute")
+def list_parcels_endpoint(request: Request, current_user: str = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM users WHERE username = ?", (current_user,))
+    user_row = cursor.fetchone()
+    conn.close()
+    if not user_row:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    from src.db import get_user_farm_parcels
+    parcels = get_user_farm_parcels(user_id=user_row["id"])
+    return {"status": "success", "data": parcels}
+
+
+@app.delete("/api/v1/parcels/{parcel_id}", tags=["Spatial Farm Parcels"])
+@limiter.limit("20/minute")
+def delete_parcel_endpoint(request: Request, parcel_id: int, current_user: str = Depends(get_current_user)):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM users WHERE username = ?", (current_user,))
+    user_row = cursor.fetchone()
+    conn.close()
+    if not user_row:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    from src.db import delete_farm_parcel
+    deleted = delete_farm_parcel(parcel_id=parcel_id, user_id=user_row["id"])
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Parcel not found or unauthorized")
+    return {"status": "success", "message": f"Parcel {parcel_id} deleted successfully"}
+
 
 
 
