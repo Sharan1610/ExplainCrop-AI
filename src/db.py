@@ -228,14 +228,14 @@ def export_to_parquet():
     conn = get_db_connection()
     df = pd.read_sql_query("SELECT nitrogen, phosphorus, potassium, temperature, humidity, ph, rainfall, crop FROM soil_climate_samples", conn)
     conn.close()
-    df.to_parquet(PARQUET_PATH, index=False)
+    df.to_parquet(PARQUET_PATH, engine="fastparquet", index=False)
     return df
 
 
 def load_dataset_from_db() -> pd.DataFrame:
     """Loads the entire crop dataset directly from SQLite or Parquet without CSV."""
     if os.path.exists(PARQUET_PATH):
-        return pd.read_parquet(PARQUET_PATH)
+        return pd.read_parquet(PARQUET_PATH, engine="fastparquet")
     
     conn = get_db_connection()
     df = pd.read_sql_query(
@@ -449,6 +449,21 @@ def get_admin_metrics() -> Dict[str, Any]:
         "system_status": "Healthy"
     }
 
+
+def save_prediction_history(username: str, n: float, p: float, k: float, temp: float, hum: float, ph: float, rain: float, top_crop: str, top_conf: float):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM users WHERE username = ?", (username,))
+    user_row = cursor.fetchone()
+    if user_row:
+        user_id = user_row["id"]
+        cursor.execute("""
+            INSERT INTO prediction_history (
+                user_id, nitrogen, phosphorus, potassium, temperature, humidity, ph, rainfall, predicted_crop, confidence
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (user_id, n, p, k, temp, hum, ph, rain, top_crop, top_conf))
+        conn.commit()
+    conn.close()
 
 if __name__ == "__main__":
     init_database()
