@@ -355,6 +355,19 @@ with tab_rec:
         rainfall=rain_val,
         top_k=3,
     )
+    from src.db import save_prediction_history
+    save_prediction_history(
+        username=st.session_state.get("username", "admin"),
+        n=n_val,
+        p=p_val,
+        k=k_val,
+        temp=temp_val,
+        hum=hum_val,
+        ph=ph_val,
+        rain=rain_val,
+        top_crop=results["top_crop"],
+        top_conf=results["top_viability_score"]
+    )
 
     st.markdown("---")
     st.markdown("### Top-Ranked Crop Recommendations")
@@ -907,12 +920,25 @@ with tab_multimodal:
             pred_res = predict_and_explain(
                 fused["N"], fused["P"], fused["K"], fused["temperature"], fused["humidity"], fused["ph"], fused["rainfall"]
             )
+            from src.db import save_prediction_history
+            save_prediction_history(
+                username=st.session_state.get("username", "admin"),
+                n=fused["N"],
+                p=fused["P"],
+                k=fused["K"],
+                temp=fused["temperature"],
+                hum=fused["humidity"],
+                ph=fused["ph"],
+                rain=fused["rainfall"],
+                top_crop=pred_res["top_crop"],
+                top_conf=pred_res["top_viability_score"]
+            )
 
             st.markdown("### 🏆 Multi-Modal Prediction & Yield Estimation")
             res_col1, res_col2 = st.columns([1, 1])
 
             top_crop = pred_res["top_crop"]
-            top_conf = pred_res["top_confidence"]
+            top_conf = round(pred_res["top_viability_score"] * 100, 2)
             historical_bench = yld_res["crop_yield_benchmarks"].get(top_crop, {})
             expected_yield = historical_bench.get("avg_yield_kg_ha", 3800.0)
 
@@ -938,13 +964,13 @@ with tab_multimodal:
                 shap_df = pd.DataFrame(pred_res["feature_contributions"])
                 fig_shap_multi = px.bar(
                     shap_df,
-                    x="shap_value",
+                    x="shap_delta",
                     y="label",
                     orientation="h",
                     color="impact",
                     color_discrete_map={"positive": "#10B981", "negative": "#EF4444"},
                     title=f"Multi-Modal SHAP Factor Drivers for '{top_crop}'",
-                    labels={"shap_value": "SHAP Impact Score", "label": "Modality Variable"},
+                    labels={"shap_delta": "SHAP Impact Score", "label": "Modality Variable"},
                 )
                 fig_shap_multi.update_layout(
                     template="plotly_dark",
@@ -957,7 +983,7 @@ with tab_multimodal:
                 )
                 st.plotly_chart(fig_shap_multi, use_container_width=True)
 
-            st.info(f"💡 **Agronomic Synthesis**: {pred_res['explanation']}")
+            st.info(f"💡 **Agronomic Synthesis**: {pred_res['human_readable_summary']}")
 
 
 # ==============================================================================

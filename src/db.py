@@ -450,6 +450,21 @@ def get_admin_metrics() -> Dict[str, Any]:
     }
 
 
+def save_prediction_history(username: str, n: float, p: float, k: float, temp: float, hum: float, ph: float, rain: float, top_crop: str, top_conf: float):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM users WHERE username = ?", (username,))
+    user_row = cursor.fetchone()
+    if user_row:
+        user_id = user_row["id"]
+        cursor.execute("""
+            INSERT INTO prediction_history (
+                user_id, nitrogen, phosphorus, potassium, temperature, humidity, ph, rainfall, predicted_crop, confidence
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (user_id, n, p, k, temp, hum, ph, rain, top_crop, top_conf))
+        conn.commit()
+    conn.close()
+
 if __name__ == "__main__":
     init_database()
     csv_cand = os.path.join(BASE_DIR, "Crop_Recommendation.csv")
