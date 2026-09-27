@@ -11,7 +11,7 @@ import os
 import sys
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
-from fastapi import FastAPI, HTTPException, Query, status, Request, Depends
+from fastapi import FastAPI, HTTPException, Query, status, Request, Depends, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from loguru import logger
@@ -32,7 +32,7 @@ from src.db import get_db_connection
 from src.security import verify_password, get_password_hash, create_access_token
 import sqlite3
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/login", auto_error=False)
 
 # Initialize Rate Limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -59,11 +59,13 @@ app.add_middleware(
 
 
 # Pydantic Schemas
+from pydantic import BaseModel, Field, model_validator
+
 class SoilProfile(BaseModel):
-    nitrogen_mg_kg: float = Field(..., ge=0.0, le=300.0, description="Nitrogen content (mg/kg or ratio)", example=135.0)
-    phosphorus_mg_kg: float = Field(..., ge=0.0, le=300.0, description="Phosphorus content (mg/kg or ratio)", example=42.0)
-    potassium_mg_kg: float = Field(..., ge=0.0, le=300.0, description="Potassium content (mg/kg or ratio)", example=55.0)
-    ph_level: float = Field(..., ge=2.0, le=12.0, description="Soil pH level", example=6.7)
+    nitrogen_mg_kg: float = Field(..., ge=0.0, le=300.0, description="Nitrogen content (mg/kg or ratio)", json_schema_extra={"example": 135.0})
+    phosphorus_mg_kg: float = Field(..., ge=0.0, le=300.0, description="Phosphorus content (mg/kg or ratio)", json_schema_extra={"example": 42.0})
+    potassium_mg_kg: float = Field(..., ge=0.0, le=300.0, description="Potassium content (mg/kg or ratio)", json_schema_extra={"example": 55.0})
+    ph_level: float = Field(..., ge=2.0, le=12.0, description="Soil pH level", json_schema_extra={"example": 6.7})
 
 
 class UserCreate(BaseModel):
@@ -93,11 +95,32 @@ class FeedbackCreate(BaseModel):
 
 
 class PredictRequest(BaseModel):
-    latitude: float = Field(..., ge=-90.0, le=90.0, description="GPS Latitude coordinate", example=13.0827)
-    longitude: float = Field(..., ge=-180.0, le=180.0, description="GPS Longitude coordinate", example=80.2707)
-    soil_profile: SoilProfile
-    forecast_window_days: Optional[int] = Field(14, ge=1, le=30, description="Meteorological forecast window in days", example=14)
-    top_k: Optional[int] = Field(3, ge=1, le=10, description="Number of ranked crops to return", example=3)
+    latitude: float = Field(..., ge=-90.0, le=90.0, description="GPS Latitude coordinate", json_schema_extra={"example": 13.0827})
+    longitude: float = Field(..., ge=-180.0, le=180.0, description="GPS Longitude coordinate", json_schema_extra={"example": 80.2707})
+    soil_profile: Optional[SoilProfile] = None
+    nitrogen: Optional[float] = None
+    phosphorus: Optional[float] = None
+    potassium: Optional[float] = None
+    ph: Optional[float] = None
+    forecast_window_days: Optional[int] = Field(14, ge=1, le=30, description="Meteorological forecast window in days", json_schema_extra={"example": 14})
+    top_k: Optional[int] = Field(3, ge=1, le=10, description="Number of ranked crops to return", json_schema_extra={"example": 3})
+
+    @model_validator(mode="before")
+    @classmethod
+    def assemble_soil_profile(cls, values):
+        if isinstance(values, dict):
+            if "soil_profile" not in values or values.get("soil_profile") is None:
+                n = values.get("nitrogen", values.get("nitrogen_mg_kg", 90.0))
+                p = values.get("phosphorus", values.get("phosphorus_mg_kg", 42.0))
+                k = values.get("potassium", values.get("potassium_mg_kg", 43.0))
+                ph = values.get("ph", values.get("ph_level", 6.5))
+                values["soil_profile"] = SoilProfile(
+                    nitrogen_mg_kg=float(n),
+                    phosphorus_mg_kg=float(p),
+                    potassium_mg_kg=float(k),
+                    ph_level=float(ph)
+                )
+        return values
 
 
 class FactorItem(BaseModel):
@@ -145,6 +168,62 @@ class SimulationRequest(BaseModel):
     humidity: float = Field(..., ge=0.0, le=100.0)
     rainfall: float = Field(..., ge=0.0, le=1000.0)
     top_k: Optional[int] = Field(3, ge=1, le=10)
+
+
+class FertilizerRequest(BaseModel):
+    crop_name: str = Field(..., json_schema_extra={"example": "Rice"})
+    soil_profile: SoilProfile
+    field_area_acres: Optional[float] = Field(1.0, ge=0.1, le=1000.0, json_schema_extra={"example": 1.0})
+
+
+class IrrigationRequest(BaseModel):
+    crop_name: str = Field(..., json_schema_extra={"example": "Rice"})
+    temperature: float = Field(..., ge=-10.0, le=60.0, json_schema_extra={"example": 28.5})
+    humidity: float = Field(..., ge=0.0, le=100.0, json_schema_extra={"example": 75.0})
+    rainfall_14d_mm: float = Field(..., ge=0.0, le=1500.0, json_schema_extra={"example": 45.0})
+    growth_stage: Optional[str] = Field("mid", json_schema_extra={"example": "mid"})
+    field_area_acres: Optional[float] = Field(1.0, ge=0.1, le=1000.0, json_schema_extra={"example": 1.0})
+    soil_type: Optional[str] = Field("Loamy", json_schema_extra={"example": "Loamy"})
+    irrigation_method: Optional[str] = Field("Drip Irrigation", json_schema_extra={"example": "Drip Irrigation"})
+
+
+class DiseaseRiskRequest(BaseModel):
+    crop_name: str = Field(..., json_schema_extra={"example": "Rice"})
+    temperature: float = Field(..., ge=-10.0, le=60.0, json_schema_extra={"example": 26.5})
+    humidity: float = Field(..., ge=0.0, le=100.0, json_schema_extra={"example": 88.0})
+    rainfall_14d_mm: float = Field(..., ge=0.0, le=1500.0, json_schema_extra={"example": 95.0})
+
+
+class EconomicsRequest(BaseModel):
+    crop_name: str = Field(..., json_schema_extra={"example": "Rice"})
+    viability_score: Optional[float] = Field(0.90, ge=0.0, le=1.0, json_schema_extra={"example": 0.90})
+    field_area_acres: Optional[float] = Field(1.0, ge=0.1, le=1000.0, json_schema_extra={"example": 1.0})
+    custom_market_price_quintal: Optional[float] = Field(None, ge=0.0, json_schema_extra={"example": 2203.0})
+    fertilizer_cost_inr: Optional[float] = Field(4500.0, ge=0.0, json_schema_extra={"example": 4500.0})
+    irrigation_cost_inr: Optional[float] = Field(2500.0, ge=0.0, json_schema_extra={"example": 2500.0})
+
+
+class SoilHealthRequest(BaseModel):
+    soil_profile: SoilProfile
+    rainfall_mm: float = Field(..., ge=0.0, le=2000.0, json_schema_extra={"example": 110.0})
+    temperature_c: float = Field(..., ge=-10.0, le=60.0, json_schema_extra={"example": 26.5})
+    field_area_acres: Optional[float] = Field(1.0, ge=0.1, le=1000.0, json_schema_extra={"example": 1.0})
+    organic_matter_pct: Optional[float] = Field(0.75, ge=0.1, le=10.0, json_schema_extra={"example": 0.75})
+    tillage_type: Optional[str] = Field("Conventional Tillage", json_schema_extra={"example": "Conventional Tillage"})
+
+
+class PdfReportRequest(BaseModel):
+    crop_name: str = Field(..., json_schema_extra={"example": "Rice"})
+    viability: float = Field(..., ge=0.0, le=1.0, json_schema_extra={"example": 0.95})
+    nitrogen: float = Field(..., ge=0.0, json_schema_extra={"example": 90.0})
+    phosphorus: float = Field(..., ge=0.0, json_schema_extra={"example": 42.0})
+    potassium: float = Field(..., ge=0.0, json_schema_extra={"example": 43.0})
+    ph: float = Field(..., ge=2.0, le=12.0, json_schema_extra={"example": 6.5})
+    temperature: float = Field(..., json_schema_extra={"example": 26.5})
+    humidity: float = Field(..., json_schema_extra={"example": 75.0})
+    rainfall: float = Field(..., json_schema_extra={"example": 110.0})
+    summary: str = Field(..., json_schema_extra={"example": "Optimal agronomic match with ideal hydrothermal conditions."})
+    location_name: Optional[str] = Field("Selected Coordinates", json_schema_extra={"example": "Coimbatore, India"})
 
 
 @app.get("/", tags=["Health & Metadata"])
@@ -214,8 +293,9 @@ def get_current_user_or_api_key(token: Optional[str] = Depends(oauth2_scheme), a
             
     raise HTTPException(status_code=401, detail="Not authenticated")
 
-def get_current_user(token: str = Depends(oauth2_scheme)):
-    # Very basic validation just to extract user
+def get_current_user(token: Optional[str] = Depends(oauth2_scheme)):
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
     from jose import jwt, JWTError
     from src.security import SECRET_KEY, ALGORITHM
     try:
@@ -650,3 +730,112 @@ def revoke_api_key(request: Request, key_id: int, current_user: str = Depends(ge
     from src.db import delete_api_key
     delete_api_key(key_id=key_id, user_id=user_row["id"])
     return {"status": "success"}
+
+
+# --- AGRONOMIC ADVISORY ENDPOINTS ---
+
+@app.post("/api/v1/advisory/fertilizer", tags=["Agronomic Advisory"])
+@limiter.limit("60/minute")
+def get_fertilizer_advisory(request: Request, payload: FertilizerRequest, current_user: str = Depends(get_current_user_or_api_key)):
+    from src.fertilizer_advisor import calculate_nutrient_prescription
+    result = calculate_nutrient_prescription(
+        crop_name=payload.crop_name,
+        soil_n=payload.soil_profile.nitrogen_mg_kg,
+        soil_p=payload.soil_profile.phosphorus_mg_kg,
+        soil_k=payload.soil_profile.potassium_mg_kg,
+        soil_ph=payload.soil_profile.ph_level,
+        field_area_acres=payload.field_area_acres or 1.0
+    )
+    return {"status": "success", "data": result}
+
+
+@app.post("/api/v1/advisory/irrigation", tags=["Agronomic Advisory"])
+@limiter.limit("60/minute")
+def get_irrigation_advisory(request: Request, payload: IrrigationRequest, current_user: str = Depends(get_current_user_or_api_key)):
+    from src.irrigation_scheduler import calculate_irrigation_schedule
+    result = calculate_irrigation_schedule(
+        crop_name=payload.crop_name,
+        temperature_c=payload.temperature,
+        humidity_pct=payload.humidity,
+        rainfall_14d_mm=payload.rainfall_14d_mm,
+        growth_stage=payload.growth_stage or "mid",
+        field_area_acres=payload.field_area_acres or 1.0,
+        soil_type=payload.soil_type or "Loamy",
+        irrigation_method=payload.irrigation_method or "Drip Irrigation"
+    )
+    return {"status": "success", "data": result}
+
+
+@app.post("/api/v1/advisory/disease-risk", tags=["Agronomic Advisory"])
+@limiter.limit("60/minute")
+def get_disease_risk_advisory(request: Request, payload: DiseaseRiskRequest, current_user: str = Depends(get_current_user_or_api_key)):
+    from src.disease_risk import calculate_disease_pest_risk
+    result = calculate_disease_pest_risk(
+        crop_name=payload.crop_name,
+        temperature_c=payload.temperature,
+        humidity_pct=payload.humidity,
+        rainfall_14d_mm=payload.rainfall_14d_mm
+    )
+    return {"status": "success", "data": result}
+
+
+@app.post("/api/v1/advisory/economics", tags=["Agronomic Advisory"])
+@limiter.limit("60/minute")
+def get_economics_advisory(request: Request, payload: EconomicsRequest, current_user: str = Depends(get_current_user_or_api_key)):
+    from src.economics_engine import calculate_crop_profitability
+    result = calculate_crop_profitability(
+        crop_name=payload.crop_name,
+        viability_score=payload.viability_score or 0.90,
+        field_area_acres=payload.field_area_acres or 1.0,
+        custom_market_price_quintal=payload.custom_market_price_quintal,
+        fertilizer_cost_inr=payload.fertilizer_cost_inr or 4500.0,
+        irrigation_cost_inr=payload.irrigation_cost_inr or 2500.0
+    )
+    return {"status": "success", "data": result}
+
+
+@app.post("/api/v1/advisory/soil-health", tags=["Agronomic Advisory"])
+@limiter.limit("60/minute")
+def get_soil_health_advisory(request: Request, payload: SoilHealthRequest, current_user: str = Depends(get_current_user_or_api_key)):
+    from src.soil_health import calculate_soil_health_and_carbon
+    result = calculate_soil_health_and_carbon(
+        soil_n=payload.soil_profile.nitrogen_mg_kg,
+        soil_p=payload.soil_profile.phosphorus_mg_kg,
+        soil_k=payload.soil_profile.potassium_mg_kg,
+        soil_ph=payload.soil_profile.ph_level,
+        rainfall_mm=payload.rainfall_mm,
+        temperature_c=payload.temperature_c,
+        field_area_acres=payload.field_area_acres or 1.0,
+        organic_matter_pct=payload.organic_matter_pct or 0.75,
+        tillage_type=payload.tillage_type or "Conventional Tillage"
+    )
+    return {"status": "success", "data": result}
+
+
+@app.post("/api/v1/reports/pdf", tags=["Agronomic Advisory"])
+@limiter.limit("30/minute")
+def download_pdf_report(request: Request, payload: PdfReportRequest, current_user: str = Depends(get_current_user_or_api_key)):
+    from src.pdf_generator import generate_crop_report
+    pdf_bytes = generate_crop_report(
+        crop_name=payload.crop_name,
+        viability=payload.viability,
+        n=payload.nitrogen,
+        p=payload.phosphorus,
+        k=payload.potassium,
+        temp=payload.temperature,
+        hum=payload.humidity,
+        ph=payload.ph,
+        rain=payload.rainfall,
+        summary=payload.summary,
+        location_name=payload.location_name
+    )
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=CropMind_{payload.crop_name}_Advisory.pdf"}
+    )
+
+
+
+
+
