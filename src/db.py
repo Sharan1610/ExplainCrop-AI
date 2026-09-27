@@ -132,8 +132,26 @@ def init_database():
     );
     """)
 
+    # 1.11 Farm Spatial Parcels Table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS farm_parcels (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        parcel_name TEXT NOT NULL,
+        polygon_geojson TEXT NOT NULL,
+        area_acres REAL NOT NULL,
+        centroid_lat REAL,
+        centroid_lon REAL,
+        primary_crop TEXT,
+        soil_type TEXT DEFAULT 'Clay Loam',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users (id)
+    );
+    """)
+
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_crop ON soil_climate_samples (crop);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_soil_params ON soil_climate_samples (nitrogen, phosphorus, potassium, ph);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_parcels_user ON farm_parcels (user_id);")
 
     # 2. 30-Year Historical Climate Normals (Fallback Table for Graceful Degradation)
     cursor.execute("""
@@ -417,7 +435,45 @@ def delete_api_key(key_id: int, user_id: int):
     cursor.execute("DELETE FROM api_keys WHERE id = ? AND user_id = ?", (key_id, user_id))
     conn.commit()
     conn.close()
-    
+
+def create_farm_parcel(
+    user_id: int,
+    parcel_name: str,
+    polygon_geojson: str,
+    area_acres: float,
+    centroid_lat: Optional[float] = None,
+    centroid_lon: Optional[float] = None,
+    primary_crop: Optional[str] = None,
+    soil_type: str = "Clay Loam"
+) -> int:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO farm_parcels (user_id, parcel_name, polygon_geojson, area_acres, centroid_lat, centroid_lon, primary_crop, soil_type)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (user_id, parcel_name, polygon_geojson, area_acres, centroid_lat, centroid_lon, primary_crop, soil_type))
+    parcel_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return parcel_id
+
+def get_user_farm_parcels(user_id: int) -> List[Dict[str, Any]]:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM farm_parcels WHERE user_id = ? ORDER BY created_at DESC", (user_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+def delete_farm_parcel(parcel_id: int, user_id: int) -> bool:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM farm_parcels WHERE id = ? AND user_id = ?", (parcel_id, user_id))
+    affected = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return affected > 0
+
 def get_admin_metrics() -> Dict[str, Any]:
     """Returns system-wide metrics for the admin dashboard."""
     conn = get_db_connection()
