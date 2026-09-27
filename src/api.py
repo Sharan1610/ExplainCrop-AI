@@ -241,6 +241,14 @@ class ClimateAlertsRequest(BaseModel):
     wind_speed_kmh: Optional[float] = Field(12.0, ge=0.0, json_schema_extra={"example": 12.0})
 
 
+class FertigationScheduleRequest(BaseModel):
+    crop_name: str = Field(..., json_schema_extra={"example": "Banana"})
+    growth_stage: Optional[str] = Field("vegetative", json_schema_extra={"example": "vegetative"})
+    field_area_acres: Optional[float] = Field(1.0, ge=0.1, le=1000.0, json_schema_extra={"example": 1.0})
+    fertigation_frequency_per_week: Optional[int] = Field(2, ge=1, le=7, json_schema_extra={"example": 2})
+    irrigation_volume_litres_cycle: Optional[float] = Field(8000.0, ge=100.0, json_schema_extra={"example": 8000.0})
+
+
 @app.get("/", tags=["Health & Metadata"])
 def root():
     return {
@@ -878,6 +886,21 @@ def get_climate_alerts(request: Request, payload: ClimateAlertsRequest, current_
         wind_speed_kmh=payload.wind_speed_kmh or 12.0
     )
     return {"status": "success", "data": result}
+
+
+@app.post("/api/v1/advisory/fertigation-schedule", tags=["Agronomic Advisory"])
+@limiter.limit("60/minute")
+def get_fertigation_schedule(request: Request, payload: FertigationScheduleRequest, current_user: str = Depends(get_current_user_or_api_key)):
+    from src.fertigation_calculator import calculate_fertigation_schedule
+    result = calculate_fertigation_schedule(
+        crop_name=payload.crop_name,
+        growth_stage=payload.growth_stage or "vegetative",
+        field_area_acres=payload.field_area_acres or 1.0,
+        fertigation_frequency_per_week=payload.fertigation_frequency_per_week or 2,
+        irrigation_volume_litres_cycle=payload.irrigation_volume_litres_cycle or 8000.0
+    )
+    return {"status": "success", "data": result}
+
 
 
 
