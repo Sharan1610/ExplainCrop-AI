@@ -287,6 +287,16 @@ class ParcelCreateRequest(BaseModel):
     soil_type: Optional[str] = Field("Clay Loam", json_schema_extra={"example": "Clay Loam"})
 
 
+class ExcelReportRequest(BaseModel):
+    crop_name: str = Field(..., json_schema_extra={"example": "Rice"})
+    viability: float = Field(..., ge=0.0, le=1.0, json_schema_extra={"example": 0.95})
+    soil_profile: SoilProfile
+    temperature: float = Field(..., json_schema_extra={"example": 26.5})
+    humidity: float = Field(..., json_schema_extra={"example": 75.0})
+    rainfall: float = Field(..., json_schema_extra={"example": 110.0})
+    field_area_acres: Optional[float] = Field(1.0, ge=0.1, le=1000.0, json_schema_extra={"example": 1.0})
+
+
 @app.get("/", tags=["Health & Metadata"])
 def root():
     return {
@@ -1090,6 +1100,57 @@ def get_knowledge_categories_endpoint(request: Request):
     from src.agri_knowledge import get_all_categories
     categories = get_all_categories()
     return {"status": "success", "data": categories}
+
+
+# --- REPORT EXPORT ENDPOINTS ---
+
+@app.post("/api/v1/reports/excel", tags=["Agronomic Advisory"])
+@limiter.limit("30/minute")
+def download_excel_dossier(request: Request, payload: ExcelReportRequest, current_user: str = Depends(get_current_user_or_api_key)):
+    from src.data_exporter import generate_excel_crop_dossier
+    from src.fertilizer_advisor import calculate_nutrient_prescription
+    from src.economics_engine import calculate_crop_profitability
+    
+    fert_data = calculate_nutrient_prescription(
+        crop_name=payload.crop_name,
+        soil_n=payload.soil_profile.nitrogen_mg_kg,
+        soil_p=payload.soil_profile.phosphorus_mg_kg,
+        soil_k=payload.soil_profile.potassium_mg_kg,
+        soil_ph=payload.soil_profile.ph_level,
+        field_area_acres=payload.field_area_acres or 1.0
+    )
+    
+    econ_data = calculate_crop_profitability(
+        crop_name=payload.crop_name,
+        viability_score=payload.viability,
+        field_area_acres=payload.field_area_acres or 1.0
+    )
+    
+    excel_bytes = generate_excel_crop_dossier(
+        crop_name=payload.crop_name,
+        viability=payload.viability,
+        soil_profile={
+            "nitrogen": payload.soil_profile.nitrogen_mg_kg,
+            "phosphorus": payload.soil_profile.phosphorus_mg_kg,
+            "potassium": payload.soil_profile.potassium_mg_kg,
+            "ph": payload.soil_profile.ph_level
+        },
+        climate_profile={
+            "temperature": payload.temperature,
+            "humidity": payload.humidity,
+            "rainfall": payload.rainfall
+        },
+        field_area_acres=payload.field_area_acres or 1.0,
+        fertilizer_data=fert_data,
+        economics_data=econ_data
+    )
+    
+    return Response(
+        content=excel_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename=CropMind_{payload.crop_name}_Dossier.xlsx"}
+    )
+
 
 
 
