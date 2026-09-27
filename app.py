@@ -356,18 +356,20 @@ with tab_rec:
         top_k=3,
     )
     from src.db import save_prediction_history
-    save_prediction_history(
-        username=st.session_state.get("username", "admin"),
-        n=n_val,
-        p=p_val,
-        k=k_val,
-        temp=temp_val,
-        hum=hum_val,
-        ph=ph_val,
-        rain=rain_val,
-        top_crop=results["top_crop"],
-        top_conf=results["top_viability_score"]
-    )
+    if st.button("💾 Save to History", key="save_manual_pred"):
+        save_prediction_history(
+            username=st.session_state.get("username", "admin"),
+            n=n_val,
+            p=p_val,
+            k=k_val,
+            temp=temp_val,
+            hum=hum_val,
+            ph=ph_val,
+            rain=rain_val,
+            top_crop=results["top_crop"],
+            top_conf=results["top_viability_score"]
+        )
+        st.toast("Prediction successfully saved to your history!")
 
     st.markdown("---")
     st.markdown("### Top-Ranked Crop Recommendations")
